@@ -1,0 +1,388 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.role == 'admin';
+    }
+
+    // بيانات المستخدمين
+    match /users/{userId} {
+
+      allow create: if
+        (
+          request.auth != null
+          && request.auth.uid == userId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.role == 'customer'
+          && request.resource.data.firstName is string
+          && request.resource.data.lastName is string
+          && request.resource.data.name is string
+          && request.resource.data.email is string
+          && request.resource.data.phone is string
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'firstName',
+            'lastName',
+            'name',
+            'email',
+            'phone',
+            'role',
+            'createdAt'
+          ])
+          && request.resource.data.createdAt == request.time
+        )
+        ||
+        (
+          isAdmin()
+          && request.resource.data.uid == userId
+          && request.resource.data.role == 'technician'
+          && request.resource.data.name is string
+          && request.resource.data.firstName is string
+          && request.resource.data.lastName is string
+          && request.resource.data.residenceId is string
+          && request.resource.data.email is string
+          && (
+  request.resource.data.profileImageUrl == null
+  || request.resource.data.profileImageUrl is string
+)
+          && request.resource.data.phone is string
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'name',
+            'firstName',
+            'lastName',
+            'residenceId',
+            'email',
+            'phone',
+            'profileImageUrl',
+            'role',
+            'createdAt'
+          ])
+        );
+
+      allow read: if request.auth != null
+        && request.auth.uid == userId;
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'name',
+            'email',
+            'phone'
+          ]);
+
+      allow delete: if false;
+    }
+
+    // طلبات الخدمات
+    match /requests/{requestId} {
+
+      // إنشاء الطلب من حساب عميل فقط
+      allow create: if request.auth != null
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.role == 'customer'
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.technicianId == null
+        && request.resource.data.status == 'searching'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.serviceType in [
+          'plumber',
+          'electrician'
+        ]
+        && request.resource.data.durationMinutes is int
+        && request.resource.data.durationMinutes >= 5
+        && request.resource.data.durationMinutes <= 120
+        && request.resource.data.laborCost ==
+          request.resource.data.durationMinutes * 1.5
+        && request.resource.data.appFee == 5.0
+        && request.resource.data.materialsCost is number
+        && request.resource.data.materialsCost >= 0
+        && request.resource.data.totalPrice ==
+          request.resource.data.laborCost
+          + request.resource.data.appFee
+          + request.resource.data.materialsCost
+        && request.resource.data.keys().hasOnly([
+          'requestId',
+          'customerId',
+          'technicianId',
+          'serviceType',
+          'customerLatitude',
+          'customerLongitude',
+          'requestType',
+          'problemDescription',
+          'durationMinutes',
+          'materials',
+          'laborCost',
+          'appFee',
+          'materialsCost',
+          'totalPrice',
+          'status',
+          'createdAt'
+        ]);
+
+      // العميل يرى طلباته والفني يرى الطلبات المسندة إليه
+      allow read: if request.auth != null
+        && (
+          resource.data.customerId == request.auth.uid
+          || resource.data.technicianId == request.auth.uid
+        );
+
+      // تحديث حالة الطلب
+      allow update: if request.auth != null
+        && (
+
+          // الفني يقبل أو يرفض الطلب المسند إليه
+          (
+            get(
+              /databases/$(database)/documents/users/$(request.auth.uid)
+            ).data.role == 'technician'
+            && resource.data.technicianId == request.auth.uid
+            && resource.data.status == 'offered'
+            && (
+              (
+                request.resource.data.status == 'accepted'
+                && request.resource.data.acceptedAt == request.time
+                && request.resource.data.diff(resource.data)
+                  .affectedKeys().hasOnly([
+                    'status',
+                    'acceptedAt'
+                  ])
+              )
+              ||
+              (
+                request.resource.data.status == 'rejected'
+                && request.resource.data.rejectedAt == request.time
+                && request.resource.data.diff(resource.data)
+                  .affectedKeys().hasOnly([
+                    'status',
+                    'rejectedAt'
+                  ])
+              )
+            )
+          )
+
+          ||
+
+          // الفني يؤكد انتهاء العمل
+          (
+            get(
+              /databases/$(database)/documents/users/$(request.auth.uid)
+            ).data.role == 'technician'
+            && resource.data.technicianId == request.auth.uid
+            && resource.data.status == 'accepted'
+            && request.resource.data.status ==
+              'waiting_customer_confirmation'
+            && request.resource.data.technicianCompletedAt == request.time
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'technicianCompletedAt'
+              ])
+          )
+
+          ||
+
+          // العميل يؤكد استلام الخدمة
+          (
+            get(
+              /databases/$(database)/documents/users/$(request.auth.uid)
+            ).data.role == 'customer'
+            && resource.data.customerId == request.auth.uid
+            && resource.data.status ==
+              'waiting_customer_confirmation'
+            && request.resource.data.status == 'completed'
+            && request.resource.data.customerConfirmedAt == request.time
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'customerConfirmedAt'
+              ])
+          )
+        );
+
+      allow delete: if false;
+
+      // المحادثة الخاصة بالطلب
+      match /messages/{messageId} {
+
+        function requestData() {
+          return get(
+            /databases/$(database)/documents/requests/$(requestId)
+          ).data;
+        }
+
+        function isRequestParticipant() {
+          return request.auth != null
+            && (
+              request.auth.uid == requestData().customerId
+              || request.auth.uid == requestData().technicianId
+            );
+        }
+
+        allow read: if isRequestParticipant()
+          && requestData().status in [
+            'accepted',
+            'waiting_customer_confirmation',
+            'completed'
+          ];
+
+        allow create: if isRequestParticipant()
+          && requestData().status in [
+            'accepted',
+            'waiting_customer_confirmation'
+          ]
+          && request.resource.data.keys().hasOnly([
+            'senderId',
+            'text',
+            'createdAt'
+          ])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time;
+
+        allow update, delete: if false;
+      }
+    }
+
+    // طلبات تسجيل الفنيين
+    match /technicianApplications/{applicantId} {
+
+      allow create: if request.auth != null
+        && request.auth.uid == applicantId
+        && request.resource.data.uid == applicantId
+        && request.resource.data.status == 'pending'
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.residenceId is string
+        && request.resource.data.residenceId.matches('^[0-9]{10}$')
+        && request.resource.data.phoneNumber is string
+        && request.resource.data.email is string
+        && (
+  request.resource.data.profileImageUrl == null
+  || request.resource.data.profileImageUrl is string
+)
+        && request.resource.data.specialization in [
+          'plumber',
+          'electrician'
+        ]
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'firstName',
+          'lastName',
+          'residenceId',
+          'phoneNumber',
+          'email',
+          'specialization',
+          'profileImageUrl',
+          'status',
+          'createdAt'
+        ]);
+
+      allow read: if request.auth != null
+        && (
+          request.auth.uid == applicantId
+          || isAdmin()
+        );
+
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.status in [
+          'approved',
+          'rejected'
+        ]
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['status']);
+
+      allow delete: if false;
+    }
+
+    // ملفات الفنيين ومواقعهم
+    match /technicians/{technicianId} {
+
+      allow create: if isAdmin()
+        && request.resource.data.uid == technicianId
+        && request.resource.data.available == false
+        && request.resource.data.serviceType in [
+          'plumber',
+          'electrician'
+        ]
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'latitude',
+          'longitude',
+          'available',
+          'locationUpdatedAt',
+          'profileImageUrl',
+          'serviceType'
+        ]);
+
+      // الفني يقرأ بياناته، والأدمن يقرأ بيانات الجميع،
+      // والعميل يقرأ موقع الفني خلال الطلب المقبول
+      allow read: if request.auth != null
+        && (
+          (
+            request.auth.uid == technicianId
+            && get(
+              /databases/$(database)/documents/users/$(request.auth.uid)
+            ).data.role == 'technician'
+          )
+          || isAdmin()
+          || (
+            resource.data.currentRequestId is string
+            && get(
+              /databases/$(database)/documents/requests/$(resource.data.currentRequestId)
+            ).data.customerId == request.auth.uid
+            && get(
+              /databases/$(database)/documents/requests/$(resource.data.currentRequestId)
+            ).data.technicianId == technicianId
+            && get(
+              /databases/$(database)/documents/requests/$(resource.data.currentRequestId)
+            ).data.status == 'accepted'
+          )
+        );
+
+      // الفني يحدّث موقعه فقط، ولا يغيّر توفره أثناء طلب مرتبط به
+      allow update: if request.auth != null
+        && request.auth.uid == technicianId
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.role == 'technician'
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'latitude',
+            'longitude',
+            'locationUpdatedAt',
+            'available'
+          ])
+        && (
+          !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['available'])
+          ||
+          (
+            request.resource.data.available is bool
+            && (
+              !('currentRequestId' in resource.data)
+              || resource.data.currentRequestId == null
+            )
+          )
+        );
+
+      allow delete: if false;
+    }
+  }
+}
