@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -6,12 +6,10 @@ class CustomerRegisterPage extends StatefulWidget {
   const CustomerRegisterPage({super.key});
 
   @override
-  State<CustomerRegisterPage> createState() =>
-      _CustomerRegisterPageState();
+  State<CustomerRegisterPage> createState() => _CustomerRegisterPageState();
 }
 
-class _CustomerRegisterPageState
-    extends State<CustomerRegisterPage> {
+class _CustomerRegisterPageState extends State<CustomerRegisterPage> {
   final firstNameController = TextEditingController();
   final lastNameController = TextEditingController();
   final phoneController = TextEditingController();
@@ -41,7 +39,7 @@ class _CustomerRegisterPageState
     if (firstName.isEmpty || lastName.isEmpty || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter your first name, last name and phone'),
+          content: Text('أدخل الاسم الأول واسم العائلة ورقم الجوال'),
         ),
       );
       return;
@@ -52,9 +50,9 @@ class _CustomerRegisterPageState
         : phone;
 
     if (!RegExp(r'^\+9665\d{8}$').hasMatch(normalizedPhone)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid Saudi mobile number')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('أدخل رقم جوال سعودي صحيح')));
       return;
     }
 
@@ -69,9 +67,8 @@ class _CustomerRegisterPageState
         verificationFailed: (e) {
           if (!mounted) return;
           setState(() => loading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message ?? 'Verification failed')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(e.message ?? 'فشل التحقق')));
         },
         codeSent: (id, token) {
           if (!mounted) return;
@@ -79,9 +76,9 @@ class _CustomerRegisterPageState
             verificationId = id;
             loading = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Verification code sent')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('تم إرسال رمز التحقق')));
         },
         codeAutoRetrievalTimeout: (id) {
           verificationId = id;
@@ -90,9 +87,8 @@ class _CustomerRegisterPageState
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
     }
   }
 
@@ -103,7 +99,7 @@ class _CustomerRegisterPageState
 
     if (!RegExp(r'^\d{6}$').hasMatch(code)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter the 6-digit code')),
+        const SnackBar(content: Text('أدخل رمز التحقق المكون من 6 أرقام')),
       );
       return;
     }
@@ -121,27 +117,25 @@ class _CustomerRegisterPageState
       if (!mounted) return;
       setState(() => loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Invalid code')),
+        SnackBar(content: Text(e.message ?? 'رمز التحقق غير صحيح')),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration error: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('خطأ في التسجيل: $e')));
     }
   }
 
-  Future<void> completeRegistration(
-    PhoneAuthCredential credential,
-  ) async {
+  Future<void> completeRegistration(PhoneAuthCredential credential) async {
     try {
-      final result = await FirebaseAuth.instance
-          .signInWithCredential(credential);
+      final result = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
 
       final user = result.user;
       if (user == null) {
-        throw Exception('Unable to create account');
+        throw Exception('تعذر إنشاء الحساب');
       }
 
       final userRef = FirebaseFirestore.instance
@@ -157,9 +151,7 @@ class _CustomerRegisterPageState
         setState(() => loading = false);
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This phone number already has an account. Please sign in.'),
-          ),
+          const SnackBar(content: Text('هذا الرقم مسجل مسبقاً، سجّل الدخول')),
         );
         return;
       }
@@ -183,19 +175,16 @@ class _CustomerRegisterPageState
 
       setState(() => loading = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Customer account created successfully'),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('تم إنشاء حسابك بنجاح')));
 
-      Navigator.pop(context);
+      // الرجوع للبداية: AuthGate يفتح الصفحة الرئيسية للعميل.
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
     }
   }
 
@@ -212,7 +201,7 @@ class _CustomerRegisterPageState
     return Scaffold(
       backgroundColor: const Color(0xFF080B16),
       appBar: AppBar(
-        title: const Text('Customer Registration'),
+        title: const Text('تسجيل عميل جديد'),
         backgroundColor: const Color(0xFF080B16),
       ),
       body: SingleChildScrollView(
@@ -225,14 +214,14 @@ class _CustomerRegisterPageState
             TextField(
               controller: firstNameController,
               enabled: verificationId == null && !loading,
-              decoration: fieldDecoration('First Name', Icons.person),
+              decoration: fieldDecoration('الاسم الأول', Icons.person),
             ),
             const SizedBox(height: 18),
 
             TextField(
               controller: lastNameController,
               enabled: verificationId == null && !loading,
-              decoration: fieldDecoration('Last Name', Icons.person_outline),
+              decoration: fieldDecoration('اسم العائلة', Icons.person_outline),
             ),
             const SizedBox(height: 18),
 
@@ -240,8 +229,9 @@ class _CustomerRegisterPageState
               controller: phoneController,
               enabled: verificationId == null && !loading,
               keyboardType: TextInputType.phone,
+              textDirection: TextDirection.ltr,
               decoration: fieldDecoration(
-                'Mobile Number (05XXXXXXXX)',
+                'رقم الجوال (05XXXXXXXX)',
                 Icons.phone_android,
               ),
             ),
@@ -252,7 +242,7 @@ class _CustomerRegisterPageState
               enabled: verificationId == null && !loading,
               keyboardType: TextInputType.emailAddress,
               decoration: fieldDecoration(
-                'Email Address (Optional)',
+                'البريد الإلكتروني (اختياري)',
                 Icons.email_outlined,
               ),
             ),
@@ -265,7 +255,7 @@ class _CustomerRegisterPageState
                 height: 55,
                 child: ElevatedButton(
                   onPressed: loading ? null : sendCode,
-                  child: const Text('SEND VERIFICATION CODE'),
+                  child: const Text('إرسال رمز التحقق'),
                 ),
               ),
 
@@ -273,10 +263,7 @@ class _CustomerRegisterPageState
               TextField(
                 controller: codeController,
                 keyboardType: TextInputType.number,
-                decoration: fieldDecoration(
-                  'SMS Verification Code',
-                  Icons.lock_outline,
-                ),
+                decoration: fieldDecoration('رمز التحقق', Icons.lock_outline),
               ),
               const SizedBox(height: 18),
               SizedBox(
@@ -284,7 +271,7 @@ class _CustomerRegisterPageState
                 height: 55,
                 child: ElevatedButton(
                   onPressed: loading ? null : verifyCode,
-                  child: const Text('VERIFY & CREATE ACCOUNT'),
+                  child: const Text('تحقق وأنشئ الحساب'),
                 ),
               ),
             ],

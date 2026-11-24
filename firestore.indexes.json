@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "customerId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "technicianId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "technicians",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "serviceType", "order": "ASCENDING"},
+        {"fieldPath": "available", "order": "ASCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

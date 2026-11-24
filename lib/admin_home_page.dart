@@ -1,5 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:material_ui/material_ui.dart';
+
+import 'core/service_catalog.dart';
+import 'services/notification_service.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AdminHomePage extends StatefulWidget {
@@ -29,17 +32,17 @@ class _AdminHomePageState extends State<AdminHomePage> {
       final batch = db.batch();
 
       final userRef = db.collection('users').doc(applicantId);
-      final technicianRef =
-          db.collection('technicians').doc(applicantId);
-      final applicationRef =
-          db.collection('technicianApplications').doc(applicantId);
+      final technicianRef = db.collection('technicians').doc(applicantId);
+      final applicationRef = db
+          .collection('technicianApplications')
+          .doc(applicantId);
 
       batch.set(userRef, {
         'uid': applicantId,
         'name': '${data['firstName']} ${data['lastName']}',
-'firstName': data['firstName'],
-'lastName': data['lastName'],
-'residenceId': data['residenceId'],
+        'firstName': data['firstName'],
+        'lastName': data['lastName'],
+        'residenceId': data['residenceId'],
         'email': data['email'],
         'phone': data['phoneNumber'],
         'role': 'technician',
@@ -47,35 +50,30 @@ class _AdminHomePageState extends State<AdminHomePage> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-     batch.set(technicianRef, {
-  'uid': applicantId,
-  'available': false,
-  'serviceType': data['specialization'],
-  'profileImageUrl': data['profileImageUrl'],
-  'latitude': null,
-  'longitude': null,
-  'locationUpdatedAt': null,
-});
-
-      batch.update(applicationRef, {
-        'status': 'approved',
+      batch.set(technicianRef, {
+        'uid': applicantId,
+        'available': false,
+        'serviceType': data['specialization'],
+        'profileImageUrl': data['profileImageUrl'],
+        'latitude': null,
+        'longitude': null,
+        'locationUpdatedAt': null,
       });
+
+      batch.update(applicationRef, {'status': 'approved'});
 
       await batch.commit();
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم قبول الفني وتفعيل حسابه بنجاح'),
-        ),
+        const SnackBar(content: Text('تم قبول الفني وتفعيل حسابه بنجاح')),
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر قبول الفني: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذر قبول الفني: $e')));
     } finally {
       if (mounted) {
         setState(() => processingIds.remove(applicantId));
@@ -89,22 +87,19 @@ class _AdminHomePageState extends State<AdminHomePage> {
     setState(() => processingIds.add(applicantId));
 
     try {
-      await db
-          .collection('technicianApplications')
-          .doc(applicantId)
-          .update({'status': 'rejected'});
+      await db.collection('technicianApplications').doc(applicantId).update({
+        'status': 'rejected',
+      });
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم رفض طلب الفني')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('تم رفض طلب الفني')));
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر رفض الطلب: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذر رفض الطلب: $e')));
     } finally {
       if (mounted) {
         setState(() => processingIds.remove(applicantId));
@@ -124,13 +119,8 @@ class _AdminHomePageState extends State<AdminHomePage> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-
-              if (!context.mounted) return;
-
-              Navigator.of(context).popUntil(
-                (route) => route.isFirst,
-              );
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              await NotificationService.signOut();
             },
           ),
         ],
@@ -152,9 +142,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
 
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(
-                color: primaryColor,
-              ),
+              child: CircularProgressIndicator(color: primaryColor),
             );
           }
 
@@ -164,10 +152,7 @@ class _AdminHomePageState extends State<AdminHomePage> {
             return const Center(
               child: Text(
                 'لا توجد طلبات فنيين معلقة حالياً',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             );
           }
@@ -201,36 +186,37 @@ class _AdminHomePageState extends State<AdminHomePage> {
                       ),
                       const SizedBox(height: 14),
                       Center(
-  child: CircleAvatar(
-    radius: 48,
-    backgroundColor: const Color(0xFF15182A),
-    backgroundImage:
-        (data['profileImageUrl'] != null &&
-                data['profileImageUrl'].toString().isNotEmpty)
-            ? NetworkImage(data['profileImageUrl'].toString())
-            : null,
-    child: (data['profileImageUrl'] == null ||
-            data['profileImageUrl'].toString().isEmpty)
-        ? const Icon(
-            Icons.person,
-            size: 55,
-            color: Colors.white70,
-          )
-        : null,
-  ),
-),
-const SizedBox(height: 14),
+                        child: CircleAvatar(
+                          radius: 48,
+                          backgroundColor: const Color(0xFF15182A),
+                          backgroundImage:
+                              (data['profileImageUrl'] != null &&
+                                  data['profileImageUrl'].toString().isNotEmpty)
+                              ? NetworkImage(data['profileImageUrl'].toString())
+                              : null,
+                          child:
+                              (data['profileImageUrl'] == null ||
+                                  data['profileImageUrl'].toString().isEmpty)
+                              ? const Icon(
+                                  Icons.person,
+                                  size: 55,
+                                  color: Colors.white70,
+                                )
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       _info(
-  'الاسم',
-  '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}',
-),
+                        'الاسم',
+                        '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}',
+                      ),
                       _info('رقم الجوال', data['phoneNumber']),
                       _info('رقم الإقامة', data['residenceId']),
                       _info(
                         'التخصص',
-                        data['specialization'] == 'plumber'
-                            ? 'سباكة'
-                            : 'كهرباء',
+                        ServiceCatalog.byId(data['specialization'])
+                                ?.technicianTitle ??
+                            '-',
                       ),
                       const SizedBox(height: 18),
                       Row(
@@ -239,10 +225,7 @@ const SizedBox(height: 14),
                             child: ElevatedButton(
                               onPressed: busy
                                   ? null
-                                  : () => approveTechnician(
-                                        doc.id,
-                                        data,
-                                      ),
+                                  : () => approveTechnician(doc.id, data),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: primaryColor,
                                 foregroundColor: Colors.black,
@@ -290,10 +273,7 @@ const SizedBox(height: 14),
       padding: const EdgeInsets.only(bottom: 9),
       child: Text(
         '$title: ${value ?? '-'}',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 15),
       ),
     );
   }

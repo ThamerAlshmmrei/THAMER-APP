@@ -3,6 +3,28 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // أنواع الخدمات المدعومة
+    function serviceTypes() {
+      return ['plumber', 'electrician', 'ac', 'washing_machine'];
+    }
+
+    // رسوم التطبيق: 15% من أجرة العمل بحد أدنى 5 ريال، مقربة للأسفل لأقرب هللة
+    function validAppFee(data) {
+      return (
+          math.floor(data.laborCost * 15) >= 500
+          && data.appFee == math.floor(data.laborCost * 15) / 100.0
+        )
+        || (
+          math.floor(data.laborCost * 15) < 500
+          && data.appFee == 5.0
+        );
+    }
+
+    function optionalShortString(data, field) {
+      return !(field in data)
+        || (data[field] is string && data[field].size() <= 60);
+    }
+
     function isAdmin() {
       return request.auth != null
         && get(
@@ -78,8 +100,17 @@ service cloud.firestore {
           .affectedKeys().hasOnly([
             'name',
             'email',
-            'phone'
-          ]);
+            'phone',
+            'fcmToken'
+          ])
+        && (
+          !('fcmToken' in request.resource.data)
+          || request.resource.data.fcmToken == null
+          || (
+            request.resource.data.fcmToken is string
+            && request.resource.data.fcmToken.size() <= 4096
+          )
+        );
 
       allow delete: if false;
     }
@@ -96,22 +127,30 @@ service cloud.firestore {
         && request.resource.data.technicianId == null
         && request.resource.data.status == 'searching'
         && request.resource.data.createdAt == request.time
-        && request.resource.data.serviceType in [
-          'plumber',
-          'electrician'
-        ]
+        && request.resource.data.serviceType in serviceTypes()
         && request.resource.data.durationMinutes is int
         && request.resource.data.durationMinutes >= 5
         && request.resource.data.durationMinutes <= 120
         && request.resource.data.laborCost ==
           request.resource.data.durationMinutes * 1.5
-        && request.resource.data.appFee == 5.0
+        && validAppFee(request.resource.data)
         && request.resource.data.materialsCost is number
         && request.resource.data.materialsCost >= 0
         && request.resource.data.totalPrice ==
           request.resource.data.laborCost
           + request.resource.data.appFee
           + request.resource.data.materialsCost
+        && request.resource.data.problemDescription is string
+        && request.resource.data.problemDescription.size() <= 1000
+        && optionalShortString(request.resource.data, 'deviceType')
+        && optionalShortString(request.resource.data, 'issueType')
+        && (
+          !(request.resource.data.serviceType in ['ac', 'washing_machine'])
+          || (
+            'deviceType' in request.resource.data
+            && 'issueType' in request.resource.data
+          )
+        )
         && request.resource.data.keys().hasOnly([
           'requestId',
           'customerId',
@@ -121,6 +160,8 @@ service cloud.firestore {
           'customerLongitude',
           'requestType',
           'problemDescription',
+          'deviceType',
+          'issueType',
           'durationMinutes',
           'materials',
           'laborCost',
@@ -209,6 +250,41 @@ service cloud.firestore {
                 'customerConfirmedAt'
               ])
           )
+
+          ||
+
+          // العميل يلغي الطلب قبل قبول الفني
+          (
+            resource.data.customerId == request.auth.uid
+            && resource.data.status in [
+              'searching',
+              'offered',
+              'rejected',
+              'no_technician_available'
+            ]
+            && request.resource.data.status == 'cancelled'
+            && request.resource.data.cancelledAt == request.time
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'cancelledAt'
+              ])
+          )
+
+          ||
+
+          // العميل يعيد البحث عند عدم توفر فني
+          (
+            resource.data.customerId == request.auth.uid
+            && resource.data.status == 'no_technician_available'
+            && request.resource.data.status == 'searching'
+            && request.resource.data.retriedAt == request.time
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                'status',
+                'retriedAt'
+              ])
+          )
         );
 
       allow delete: if false;
@@ -260,7 +336,8 @@ service cloud.firestore {
     // طلبات تسجيل الفنيين
     match /technicianApplications/{applicantId} {
 
-      allow create: if request.auth != null
+      function validApplication() {
+        return request.auth != null
         && request.auth.uid == applicantId
         && request.resource.data.uid == applicantId
         && request.resource.data.status == 'pending'
@@ -274,10 +351,7 @@ service cloud.firestore {
   request.resource.data.profileImageUrl == null
   || request.resource.data.profileImageUrl is string
 )
-        && request.resource.data.specialization in [
-          'plumber',
-          'electrician'
-        ]
+        && request.resource.data.specialization in serviceTypes()
         && request.resource.data.createdAt == request.time
         && request.resource.data.keys().hasOnly([
           'uid',
@@ -291,6 +365,15 @@ service cloud.firestore {
           'status',
           'createdAt'
         ]);
+      }
+
+      allow create: if validApplication();
+
+      // الفني المرفوض يقدر يعيد التقديم
+      allow update: if request.auth != null
+        && request.auth.uid == applicantId
+        && resource.data.status == 'rejected'
+        && validApplication();
 
       allow read: if request.auth != null
         && (
@@ -317,10 +400,7 @@ service cloud.firestore {
       allow create: if isAdmin()
         && request.resource.data.uid == technicianId
         && request.resource.data.available == false
-        && request.resource.data.serviceType in [
-          'plumber',
-          'electrician'
-        ]
+        && request.resource.data.serviceType in serviceTypes()
         && request.resource.data.keys().hasOnly([
           'uid',
           'latitude',

@@ -1,5 +1,5 @@
 name: my_first_app
-description: "A new Flutter project."
+description: "Thamer - home services app (plumber, electrician, AC, washing machine)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -46,7 +46,7 @@ dependencies:
   cloud_firestore: ^7.2.0
   geolocator: ^14.1.2
   cloud_functions: ^7.1.0
-
+  firebase_messaging: ^17.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

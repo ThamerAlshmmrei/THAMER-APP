@@ -12,8 +12,17 @@
         "lib/firebase_options.dart": {
           "projectId": "thamer-e0fdd",
           "configurations": {
-            "android": "1:269361996858:android:ffc2bec54f812779784103"
+            "android": "1:269361996858:android:ffc2bec54f812779784103",
+            "ios": "1:269361996858:ios:7e1c1f3e908120fa784103"
           }
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "thamer-e0fdd",
+          "appId": "1:269361996858:ios:7e1c1f3e908120fa784103",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
         }
       }
     }
@@ -36,7 +45,8 @@
     }
   ],
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
   "storage": {
     "rules": "storage.rules"
@@ -54,6 +64,9 @@
     "ui": {
       "enabled": true
     },
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "storage": {
+      "port": 9199
+    }
   }
 }

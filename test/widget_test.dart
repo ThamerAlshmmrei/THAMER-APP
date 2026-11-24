@@ -1,30 +1,82 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_ui/material_ui.dart';
 
-import 'package:my_first_app/main.dart';
+import 'package:my_first_app/core/pricing.dart';
+import 'package:my_first_app/core/request_status.dart';
+import 'package:my_first_app/core/service_catalog.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('Pricing', () {
+    test('labor cost is 1.5 SAR per minute', () {
+      expect(Pricing.laborCost(5), 7.5);
+      expect(Pricing.laborCost(60), 90.0);
+      expect(Pricing.laborCost(120), 180.0);
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    test('app fee never goes below 5 SAR', () {
+      expect(Pricing.appFee(Pricing.laborCost(5)), 5.0);
+      expect(Pricing.appFee(Pricing.laborCost(22)), 5.0);
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    test('app fee is 15% of labor above the minimum', () {
+      // 23 دقيقة = 34.5 ريال، 15% = 5.175 -> 5.17
+      expect(Pricing.appFee(Pricing.laborCost(23)), 5.17);
+      expect(Pricing.appFee(Pricing.laborCost(60)), 13.5);
+      expect(Pricing.appFee(Pricing.laborCost(120)), 27.0);
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('fee matches the Firestore rule formula for every duration', () {
+      for (var m = Pricing.minMinutes; m <= Pricing.maxMinutes; m++) {
+        final labor = Pricing.laborCost(m);
+        final halalas = (labor * 15).floor();
+        final ruleFee = halalas >= 500 ? halalas / 100.0 : 5.0;
+        expect(Pricing.appFee(labor), ruleFee, reason: '$m minutes');
+      }
+    });
+
+    test('total adds labor, fee and materials', () {
+      expect(Pricing.total(laborCost: 90, appFee: 13.5), 103.5);
+      expect(
+        Pricing.total(laborCost: 90, appFee: 13.5, materialsCost: 20),
+        123.5,
+      );
+    });
+  });
+
+  group('ServiceCatalog', () {
+    test('contains the four services in the rules', () {
+      expect(ServiceCatalog.all.map((s) => s.id), [
+        'plumber',
+        'electrician',
+        'ac',
+        'washing_machine',
+      ]);
+    });
+
+    test('AC and washing machine ask for device and issue', () {
+      expect(ServiceCatalog.ac.hasDeviceDetails, isTrue);
+      expect(ServiceCatalog.washingMachine.hasDeviceDetails, isTrue);
+      expect(ServiceCatalog.plumber.hasDeviceDetails, isFalse);
+      expect(ServiceCatalog.electrician.hasDeviceDetails, isFalse);
+    });
+
+    test('option labels fit the 60 character rule limit', () {
+      for (final service in ServiceCatalog.all) {
+        for (final option in [...service.deviceTypes, ...service.issueTypes]) {
+          expect(option.length, lessThanOrEqualTo(60));
+        }
+      }
+    });
+
+    test('unknown ids are handled', () {
+      expect(ServiceCatalog.byId('unknown'), isNull);
+      expect(ServiceCatalog.jobNameOf(null), '-');
+    });
+  });
+
+  group('RequestStatus', () {
+    test('accepted requests cannot be cancelled by the customer', () {
+      expect(RequestStatus.cancellable, isNot(contains('accepted')));
+      expect(RequestStatus.cancellable, contains('searching'));
+    });
   });
 }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -20,8 +20,7 @@ class _ChatPageState extends State<ChatPage> {
   static const Color primaryColor = Color(0xFF20E0C0);
   static const Color backgroundColor = Color(0xFF101525);
 
-  final TextEditingController _messageController =
-      TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
 
   bool _sending = false;
 
@@ -41,17 +40,16 @@ class _ChatPageState extends State<ChatPage> {
           .doc(widget.requestId)
           .collection('messages')
           .add({
-        'senderId': user.uid,
-        'text': message,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+            'senderId': user.uid,
+            'text': message,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
 
       _messageController.clear();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر إرسال الرسالة: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('تعذر إرسال الرسالة: $e')));
       }
     } finally {
       if (mounted) {
@@ -104,9 +102,7 @@ class _ChatPageState extends State<ChatPage> {
                 }
 
                 if (!snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
+                  return const Center(child: CircularProgressIndicator());
                 }
 
                 final messages = snapshot.data!.docs;
@@ -132,11 +128,8 @@ class _ChatPageState extends State<ChatPage> {
 
                     if (timestamp is Timestamp) {
                       final date = timestamp.toDate();
-                      final hour = date.hour % 12 == 0
-                          ? 12
-                          : date.hour % 12;
-                      final minute =
-                          date.minute.toString().padLeft(2, '0');
+                      final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+                      final minute = date.minute.toString().padLeft(2, '0');
                       final period = date.hour >= 12 ? 'م' : 'ص';
                       time = '$hour:$minute $period';
                     }
@@ -147,15 +140,12 @@ class _ChatPageState extends State<ChatPage> {
                           : Alignment.centerLeft,
                       child: Container(
                         constraints: BoxConstraints(
-                          maxWidth:
-                              MediaQuery.of(context).size.width * 0.78,
+                          maxWidth: MediaQuery.of(context).size.width * 0.78,
                         ),
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(
-                          color: isMe
-                              ? primaryColor
-                              : const Color(0xFF29344B),
+                          color: isMe ? primaryColor : const Color(0xFF29344B),
                           borderRadius: BorderRadius.circular(15),
                         ),
                         child: Column(
@@ -173,9 +163,7 @@ class _ChatPageState extends State<ChatPage> {
                               Text(
                                 time,
                                 style: TextStyle(
-                                  color: isMe
-                                      ? Colors.black54
-                                      : Colors.white54,
+                                  color: isMe ? Colors.black54 : Colors.white54,
                                   fontSize: 11,
                                 ),
                               ),
@@ -203,8 +191,7 @@ class _ChatPageState extends State<ChatPage> {
                       onSubmitted: (_) => _sendMessage(),
                       decoration: InputDecoration(
                         hintText: 'اكتب رسالتك...',
-                        hintStyle:
-                            const TextStyle(color: Colors.white54),
+                        hintStyle: const TextStyle(color: Colors.white54),
                         filled: true,
                         fillColor: backgroundColor,
                         border: OutlineInputBorder(
@@ -221,10 +208,7 @@ class _ChatPageState extends State<ChatPage> {
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: _sending ? null : _sendMessage,
-                    icon: const Icon(
-                      Icons.send,
-                      color: primaryColor,
-                    ),
+                    icon: const Icon(Icons.send, color: primaryColor),
                   ),
                 ],
               ),

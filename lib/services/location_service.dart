@@ -1,18 +1,15 @@
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
-
   // جلب الموقع الحالي مرة واحدة
   Future<Position> getCurrentLocation() async {
-    bool serviceEnabled =
-        await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       throw Exception('فعّل خدمة الموقع GPS في جهازك');
     }
 
-    LocationPermission permission =
-        await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -29,23 +26,19 @@ class LocationService {
     }
 
     return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
   }
 
   // متابعة الموقع بشكل مباشر
   Stream<Position> getLocationStream() async* {
-    bool serviceEnabled =
-        await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       throw Exception('فعّل خدمة الموقع GPS في جهازك');
     }
 
-    LocationPermission permission =
-        await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -61,8 +54,6 @@ class LocationService {
       distanceFilter: 10,
     );
 
-    yield* Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    );
+    yield* Geolocator.getPositionStream(locationSettings: locationSettings);
   }
 }

@@ -3,8 +3,12 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 
 class ImageStorageService {
-  // يبقى false حتى تفعيل Firebase Storage.
-  static const bool storageEnabled = false;
+  // يمكن إيقاف رفع الصور مؤقتاً عند البناء:
+  // --dart-define=ENABLE_STORAGE=false
+  static const bool storageEnabled = bool.fromEnvironment(
+    'ENABLE_STORAGE',
+    defaultValue: true,
+  );
 
   Future<String?> uploadTechnicianProfileImage({
     required File image,
@@ -33,14 +37,9 @@ class ImageStorageService {
           .child(userId)
           .child(fileName);
 
-      final metadata = SettableMetadata(
-        contentType: contentType,
-      );
+      final metadata = SettableMetadata(contentType: contentType);
 
-      final uploadTask = await storageRef.putFile(
-        image,
-        metadata,
-      );
+      final uploadTask = await storageRef.putFile(image, metadata);
 
       return await uploadTask.ref.getDownloadURL();
     } on FirebaseException catch (e) {

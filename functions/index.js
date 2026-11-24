@@ -5,6 +5,7 @@ const {
 } = require("firebase-functions/v2/firestore");
 const {onTaskDispatched} = require("firebase-functions/v2/tasks");
 const {getFunctions} = require("firebase-admin/functions");
+const {getMessaging} = require("firebase-admin/messaging");
 const {logger} = require("firebase-functions");
 const admin = require("firebase-admin");
 const {FieldValue} = require("firebase-admin/firestore");
@@ -13,10 +14,26 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+const REGION = "me-central2";
+
+// مهلة رد الفني على الطلب (بالثواني).
+const OFFER_TIMEOUT_SECONDS = 120;
+
+// إذا أنهى الفني العمل ولم يؤكد العميل، يُعتمد الطلب تلقائياً بعد هذه المدة.
+const AUTO_CONFIRM_SECONDS = 3 * 60 * 60;
+
 setGlobalOptions({
-  region: "me-central2",
+  region: REGION,
   maxInstances: 10,
 });
+
+const SERVICE_NAMES = {
+  plumber: "سباكة",
+  electrician: "كهرباء",
+  ac: "مكيفات",
+  washing_machine: "غسالات",
+};
+
 /**
  * Calculates the distance between two GPS locations in kilometers.
  * @param {number} lat1 First latitude.
@@ -43,6 +60,68 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 }
 
 /**
+ * Sends a push notification to a user if they registered a device token.
+ * Failures are logged and never break the request flow.
+ * @param {?string} uid Target user id.
+ * @param {string} title Notification title.
+ * @param {string} body Notification body.
+ * @param {Object<string, string>} data Extra payload.
+ * @return {Promise<void>} Resolves when done.
+ */
+async function notifyUser(uid, title, body, data = {}) {
+  if (!uid) return;
+
+  try {
+    const userSnapshot = await db.collection("users").doc(uid).get();
+    const token = userSnapshot.exists ?
+      userSnapshot.data().fcmToken :
+      null;
+
+    if (typeof token !== "string" || token.length === 0) return;
+
+    await getMessaging().send({
+      token,
+      notification: {title, body},
+      data,
+      android: {
+        priority: "high",
+        notification: {sound: "default"},
+      },
+      apns: {
+        payload: {aps: {sound: "default"}},
+      },
+    });
+  } catch (error) {
+    logger.warn("Push notification failed", {uid, error: error.message});
+  }
+}
+
+/**
+ * Releases a technician that is reserved for the given request.
+ * Must be called inside a transaction after all reads are done.
+ * @param {FirebaseFirestore.Transaction} transaction Active transaction.
+ * @param {FirebaseFirestore.DocumentReference} technicianRef Technician.
+ * @param {FirebaseFirestore.DocumentSnapshot} technicianSnapshot Snapshot.
+ * @param {string} requestId Request id.
+ */
+function releaseTechnician(
+    transaction,
+    technicianRef,
+    technicianSnapshot,
+    requestId,
+) {
+  if (
+    technicianSnapshot.exists &&
+    technicianSnapshot.data().currentRequestId === requestId
+  ) {
+    transaction.update(technicianRef, {
+      currentRequestId: null,
+      available: true,
+    });
+  }
+}
+
+/**
  * Finds and assigns the nearest eligible technician to a request.
  * @param {FirebaseFirestore.DocumentReference} requestRef Request document.
  * @param {string} expectedStatus Expected request status.
@@ -63,52 +142,38 @@ async function assignNextTechnician(
   if (request.status !== expectedStatus) return;
 
   const attempted = request.attemptedTechnicianIds || [];
-// جلب بيانات العميل
-const customerSnapshot = await db
-    .collection("users")
-    .doc(request.customerId)
-    .get();
 
-if (
-  !customerSnapshot.exists ||
-  customerSnapshot.data().role !== "customer"
-) {
-  logger.error("Customer profile not found", {
-    customerId: request.customerId,
-  });
-  return;
-}
+  const customerSnapshot = await db
+      .collection("users")
+      .doc(request.customerId)
+      .get();
 
-const customerData = customerSnapshot.data();
+  if (
+    !customerSnapshot.exists ||
+    customerSnapshot.data().role !== "customer"
+  ) {
+    logger.error("Customer profile not found", {
+      customerId: request.customerId,
+    });
+    return;
+  }
+
   const techniciansSnapshot = await db
       .collection("technicians")
       .where("serviceType", "==", request.serviceType)
       .where("available", "==", true)
       .get();
 
-  const candidates = [];
-  logger.info("DEBUG TECHNICIAN QUERY", {
-  serviceType: request.serviceType,
-  availableCount: techniciansSnapshot.size,
-  technicianIds: techniciansSnapshot.docs.map((doc) => doc.id),
-});
   logger.info("Technician search results", {
-  requestId: requestRef.id,
-  serviceType: request.serviceType,
-  techniciansFound: techniciansSnapshot.size,
-  customerLatitude: request.customerLatitude,
-  customerLongitude: request.customerLongitude,
-});
+    requestId: requestRef.id,
+    serviceType: request.serviceType,
+    techniciansFound: techniciansSnapshot.size,
+  });
+
+  const candidates = [];
 
   for (const doc of techniciansSnapshot.docs) {
     const tech = doc.data();
-    logger.info("Checking technician", {
-  technicianId: doc.id,
-  available: tech.available,
-  serviceType: tech.serviceType,
-  latitude: tech.latitude,
-  longitude: tech.longitude,
-});
 
     if (attempted.includes(doc.id)) continue;
 
@@ -119,49 +184,37 @@ const customerData = customerSnapshot.data();
       continue;
     }
 
-    const userSnapshot = await db
-        .collection("users")
-        .doc(doc.id)
-        .get();
+    const userSnapshot = await db.collection("users").doc(doc.id).get();
 
-    if (!userSnapshot.exists ||
-    userSnapshot.data().role !== "technician") {
-  continue;
-}
+    if (
+      !userSnapshot.exists ||
+      userSnapshot.data().role !== "technician"
+    ) {
+      continue;
+    }
 
-;
-
-    const distance = calculateDistance(
-        request.customerLatitude,
-        request.customerLongitude,
-        tech.latitude,
-        tech.longitude,
-    );
-
-   candidates.push({
-  id: doc.id,
-  ref: doc.ref,
-  distance,
-});
+    candidates.push({
+      id: doc.id,
+      ref: doc.ref,
+      distance: calculateDistance(
+          request.customerLatitude,
+          request.customerLongitude,
+          tech.latitude,
+          tech.longitude,
+      ),
+    });
   }
 
   candidates.sort((a, b) => a.distance - b.distance);
+
   const timeoutQueue = getFunctions().taskQueue(
-  "locations/me-central2/functions/expireTechnicianOffer"
-);
+      `locations/${REGION}/functions/expireTechnicianOffer`,
+  );
 
   for (const candidate of candidates) {
-    const offerToken =
-  `${requestRef.id}_${candidate.id}_${Date.now()}`;
+    const offerToken = `${requestRef.id}_${candidate.id}_${Date.now()}`;
+
     try {
-      await timeoutQueue.enqueue(
-  {
-    requestId: requestRef.id,
-    technicianId: candidate.id,
-    offerToken,
-  },
-  { scheduleDelaySeconds: 120 },
-);
       const assigned = await db.runTransaction(async (transaction) => {
         const freshRequest = await transaction.get(requestRef);
         const freshTechnician = await transaction.get(candidate.ref);
@@ -169,8 +222,10 @@ const customerData = customerSnapshot.data();
         let previousRef = null;
         let previousSnapshot = null;
 
-        if (previousTechnicianId &&
-            previousTechnicianId !== candidate.id) {
+        if (
+          previousTechnicianId &&
+          previousTechnicianId !== candidate.id
+        ) {
           previousRef = db.collection("technicians")
               .doc(previousTechnicianId);
           previousSnapshot = await transaction.get(previousRef);
@@ -185,63 +240,73 @@ const customerData = customerSnapshot.data();
 
         if (freshData.status !== expectedStatus) return false;
 
-        const freshAttempted =
-          freshData.attemptedTechnicianIds || [];
+        const freshAttempted = freshData.attemptedTechnicianIds || [];
 
         if (freshAttempted.includes(candidate.id)) return false;
 
         if (
           techData.available !== true ||
           (techData.currentRequestId != null &&
-           techData.currentRequestId !== requestRef.id)
+            techData.currentRequestId !== requestRef.id)
         ) {
           return false;
         }
 
-        if (
-          previousSnapshot &&
-          previousSnapshot.exists &&
-          previousSnapshot.data().currentRequestId === requestRef.id
-        ) {
-          transaction.update(previousRef, {
-            currentRequestId: null,
-            available: true,
-          });
+        if (previousSnapshot) {
+          releaseTechnician(
+              transaction,
+              previousRef,
+              previousSnapshot,
+              requestRef.id,
+          );
         }
 
         transaction.update(candidate.ref, {
-  currentRequestId: requestRef.id,
-  available: false,
-});
+          currentRequestId: requestRef.id,
+          available: false,
+        });
 
-       transaction.update(requestRef, {
-  technicianId: candidate.id,
-  status: "offered",
-
-  // بيانات العميل
- 
-
-  // بيانات الفني
- 
- 
-  attemptedTechnicianIds: [
-    ...freshAttempted,
-    candidate.id,
-  ],
-
-  offeredAt: FieldValue.serverTimestamp(),
-  offerToken,
-});
+        transaction.update(requestRef, {
+          technicianId: candidate.id,
+          status: "offered",
+          attemptedTechnicianIds: [...freshAttempted, candidate.id],
+          offeredAt: FieldValue.serverTimestamp(),
+          offerToken,
+        });
 
         return true;
       });
 
       if (assigned) {
-        logger.info("Request assigned", {
+        try {
+          await timeoutQueue.enqueue(
+              {
+                requestId: requestRef.id,
+                technicianId: candidate.id,
+                offerToken,
+              },
+              {scheduleDelaySeconds: OFFER_TIMEOUT_SECONDS},
+          );
+        } catch (error) {
+          logger.error("Could not schedule offer timeout", error);
+        }
+
+        logger.info("Request offered to technician", {
           requestId: requestRef.id,
           technicianId: candidate.id,
           distanceKm: candidate.distance,
         });
+
+        const serviceName = SERVICE_NAMES[request.serviceType] || "";
+
+        await notifyUser(
+            candidate.id,
+            "طلب خدمة جديد",
+            `طلب ${serviceName} على بعد ` +
+              `${candidate.distance.toFixed(1)} كم، ` +
+              "لديك دقيقتان للرد",
+            {requestId: requestRef.id, type: "new_offer"},
+        );
         return;
       }
     } catch (error) {
@@ -250,39 +315,51 @@ const customerData = customerSnapshot.data();
   }
 
   // No eligible technician remains.
-  await db.runTransaction(async (transaction) => {
+  const marked = await db.runTransaction(async (transaction) => {
     const freshRequest = await transaction.get(requestRef);
 
-    if (!freshRequest.exists ||
-        freshRequest.data().status !== expectedStatus) {
-      return;
-    }
+    let previousRef = null;
+    let previousSnapshot = null;
 
     if (previousTechnicianId) {
-      const previousRef = db.collection("technicians")
-          .doc(previousTechnicianId);
-      const previousSnapshot = await transaction.get(previousRef);
+      previousRef = db.collection("technicians").doc(previousTechnicianId);
+      previousSnapshot = await transaction.get(previousRef);
+    }
 
-      if (
-        previousSnapshot.exists &&
-        previousSnapshot.data().currentRequestId === requestRef.id
-      ) {
-        transaction.update(previousRef, {
-          currentRequestId: null,
-          available: true,
-        });
-      }
+    if (
+      !freshRequest.exists ||
+      freshRequest.data().status !== expectedStatus
+    ) {
+      return false;
+    }
+
+    if (previousSnapshot) {
+      releaseTechnician(
+          transaction,
+          previousRef,
+          previousSnapshot,
+          requestRef.id,
+      );
     }
 
     transaction.update(requestRef, {
       technicianId: null,
       status: "no_technician_available",
     });
+
+    return true;
   });
 
-  logger.info("No technician available", {
-    requestId: requestRef.id,
-  });
+  if (marked) {
+    logger.info("No technician available", {requestId: requestRef.id});
+
+    await notifyUser(
+        request.customerId,
+        "لا يوجد فني متاح حالياً",
+        "تقدر تعيد البحث من صفحة الطلب بعد قليل",
+        {requestId: requestRef.id, type: "no_technician"},
+    );
+  }
 }
 
 // First dispatch when a customer creates a request.
@@ -296,15 +373,11 @@ exports.dispatchNewRequest = onDocumentCreated(
 
       if (request.status !== "searching") return;
 
-      await assignNextTechnician(
-          snapshot.ref,
-          "searching",
-      );
+      await assignNextTechnician(snapshot.ref, "searching");
     },
 );
 
-// Dispatch to the next technician after rejection.
-// Also reserve the technician's availability after acceptance.
+// Reacts to every status change of a request.
 exports.handleRequestUpdate = onDocumentUpdated(
     "requests/{requestId}",
     async (event) => {
@@ -312,11 +385,10 @@ exports.handleRequestUpdate = onDocumentUpdated(
       const after = event.data.after.data();
       const requestRef = event.data.after.ref;
 
-      // Technician rejects: assign the next technician.
-      if (
-        before.status !== "rejected" &&
-      after.status === "rejected"
-      ) {
+      if (before.status === after.status) return;
+
+      // Technician rejects (or offer expired): assign the next technician.
+      if (after.status === "rejected") {
         await assignNextTechnician(
             requestRef,
             "rejected",
@@ -325,40 +397,76 @@ exports.handleRequestUpdate = onDocumentUpdated(
         return;
       }
 
-      // Technician accepts: reveal contact details and mark unavailable.
+      // Customer retries after no technician was available.
       if (
-        before.status !== "accepted" &&
-        after.status === "accepted" &&
-        after.technicianId
+        before.status === "no_technician_available" &&
+        after.status === "searching"
       ) {
+        await requestRef.update({attemptedTechnicianIds: []});
+        await assignNextTechnician(requestRef, "searching");
+        return;
+      }
+
+      // Customer cancels: release the reserved technician, if any.
+      if (after.status === "cancelled") {
+        const technicianId = after.technicianId || before.technicianId;
+
+        if (technicianId) {
+          const technicianRef = db.collection("technicians")
+              .doc(technicianId);
+
+          await db.runTransaction(async (transaction) => {
+            const technician = await transaction.get(technicianRef);
+            releaseTechnician(
+                transaction,
+                technicianRef,
+                technician,
+                requestRef.id,
+            );
+          });
+
+          if (before.status === "offered") {
+            await notifyUser(
+                technicianId,
+                "تم إلغاء الطلب",
+                "قام العميل بإلغاء الطلب",
+                {requestId: requestRef.id, type: "cancelled"},
+            );
+          }
+        }
+
+        logger.info("Request cancelled", {requestId: requestRef.id});
+        return;
+      }
+
+      // Technician accepts: reveal contact details and mark unavailable.
+      if (after.status === "accepted" && after.technicianId) {
         const technicianRef = db
-          .collection("technicians")
-          .doc(after.technicianId);
+            .collection("technicians")
+            .doc(after.technicianId);
 
-        // Get both users and the technician's latest location.
-       const [customerSnapshot, technicianUserSnapshot] =
-  await Promise.all([
-    db.collection("users").doc(after.customerId).get(),
-    db.collection("users").doc(after.technicianId).get(),
-  ]);
+        const [customerSnapshot, technicianUserSnapshot] =
+          await Promise.all([
+            db.collection("users").doc(after.customerId).get(),
+            db.collection("users").doc(after.technicianId).get(),
+          ]);
 
-        const customerData = customerSnapshot.exists
-          ? customerSnapshot.data()
-          : {};
+        const customerData = customerSnapshot.exists ?
+          customerSnapshot.data() :
+          {};
 
-        const technicianUserData = technicianUserSnapshot.exists
-          ? technicianUserSnapshot.data()
-          : {};
-          
+        const technicianUserData = technicianUserSnapshot.exists ?
+          technicianUserSnapshot.data() :
+          {};
 
         // Reveal contact details only after acceptance.
         await requestRef.update({
-  customerName: customerData.name || "",
-  customerPhone: customerData.phone || "",
-  technicianName: technicianUserData.name || "",
-  technicianPhone: technicianUserData.phone || "",
-  technicianImageUrl: technicianUserData.profileImageUrl || null,
-});
+          customerName: customerData.name || "",
+          customerPhone: customerData.phone || "",
+          technicianName: technicianUserData.name || "",
+          technicianPhone: technicianUserData.phone || "",
+          technicianImageUrl: technicianUserData.profileImageUrl || null,
+        });
 
         await db.runTransaction(async (transaction) => {
           const technician = await transaction.get(technicianRef);
@@ -367,9 +475,7 @@ exports.handleRequestUpdate = onDocumentUpdated(
             technician.exists &&
             technician.data().currentRequestId === requestRef.id
           ) {
-            transaction.update(technicianRef, {
-              available: false,
-            });
+            transaction.update(technicianRef, {available: false});
           }
         });
 
@@ -377,17 +483,42 @@ exports.handleRequestUpdate = onDocumentUpdated(
           requestId: requestRef.id,
           technicianId: after.technicianId,
         });
+
+        await notifyUser(
+            after.customerId,
+            "تم قبول طلبك",
+            `الفني ${technicianUserData.name || ""} في الطريق إليك`.trim(),
+            {requestId: requestRef.id, type: "accepted"},
+        );
         return;
-      
       }
 
-      // Customer confirms service completion:
-      // release the technician.
-      if (
-        before.status === "waiting_customer_confirmation" &&
-      after.status === "completed" &&
-      after.technicianId
-      ) {
+      // Technician finished: ask the customer to confirm, with a fallback.
+      if (after.status === "waiting_customer_confirmation") {
+        try {
+          await getFunctions()
+              .taskQueue(
+                  `locations/${REGION}/functions/autoConfirmCompletion`,
+              )
+              .enqueue(
+                  {requestId: requestRef.id},
+                  {scheduleDelaySeconds: AUTO_CONFIRM_SECONDS},
+              );
+        } catch (error) {
+          logger.error("Could not schedule auto confirmation", error);
+        }
+
+        await notifyUser(
+            after.customerId,
+            "الفني أنهى العمل",
+            "فضلاً أكّد انتهاء الخدمة من التطبيق",
+            {requestId: requestRef.id, type: "waiting_confirmation"},
+        );
+        return;
+      }
+
+      // Service completed: release the technician.
+      if (after.status === "completed" && after.technicianId) {
         const technicianRef = db
             .collection("technicians")
             .doc(after.technicianId);
@@ -398,78 +529,119 @@ exports.handleRequestUpdate = onDocumentUpdated(
 
           if (
             !requestSnapshot.exists ||
-          requestSnapshot.data().status !== "completed"
+            requestSnapshot.data().status !== "completed"
           ) {
             return;
           }
 
-          if (
-            technician.exists &&
-          technician.data().currentRequestId === requestRef.id
-          ) {
-            transaction.update(technicianRef, {
-              available: true,
-              currentRequestId: null,
-            });
-          }
+          releaseTechnician(
+              transaction,
+              technicianRef,
+              technician,
+              requestRef.id,
+          );
         });
 
-        logger.info("Request completed by both parties", {
+        logger.info("Request completed", {
           requestId: requestRef.id,
           technicianId: after.technicianId,
         });
+
+        await notifyUser(
+            after.technicianId,
+            "اكتمل الطلب",
+            "تم تأكيد انتهاء الخدمة، أنت الآن متاح لطلبات جديدة",
+            {requestId: requestRef.id, type: "completed"},
+        );
       }
     },
 );
+
+// Moves an unanswered offer to the next technician.
 exports.expireTechnicianOffer = onTaskDispatched(
-  {
-    retryConfig: {
-      maxAttempts: 5,
-      minBackoffSeconds: 10,
+    {
+      retryConfig: {
+        maxAttempts: 5,
+        minBackoffSeconds: 10,
+      },
+      rateLimits: {
+        maxConcurrentDispatches: 10,
+      },
     },
-    rateLimits: {
-      maxConcurrentDispatches: 10,
-    },
-  },
-  async (req) => {
-    const {requestId, technicianId, offerToken} = req.data;
+    async (req) => {
+      const {requestId, technicianId, offerToken} = req.data;
 
-    if (!requestId || !technicianId || !offerToken) {
-      logger.error("Invalid technician offer timeout task", {
-        requestId,
-        technicianId,
-      });
-      return;
-    }
-
-    const requestRef = db.collection("requests").doc(requestId);
-
-    await db.runTransaction(async (transaction) => {
-      const requestSnapshot = await transaction.get(requestRef);
-
-      if (!requestSnapshot.exists) return;
-
-      const request = requestSnapshot.data();
-
-      // لا تنتهي المهلة إذا تغير الفني أو قبل الطلب.
-      if (
-        request.status !== "offered" ||
-        request.technicianId !== technicianId ||
-        request.offerToken !== offerToken
-      ) {
+      if (!requestId || !technicianId || !offerToken) {
+        logger.error("Invalid technician offer timeout task", {
+          requestId,
+          technicianId,
+        });
         return;
       }
 
-      // انتهاء مهلة الفني الحالي.
-      transaction.update(requestRef, {
-        status: "rejected",
-        rejectedAt: FieldValue.serverTimestamp(),
+      const requestRef = db.collection("requests").doc(requestId);
+
+      await db.runTransaction(async (transaction) => {
+        const requestSnapshot = await transaction.get(requestRef);
+
+        if (!requestSnapshot.exists) return;
+
+        const request = requestSnapshot.data();
+
+        // لا تنتهي المهلة إذا تغير الفني أو قُبل الطلب.
+        if (
+          request.status !== "offered" ||
+          request.technicianId !== technicianId ||
+          request.offerToken !== offerToken
+        ) {
+          return;
+        }
+
+        transaction.update(requestRef, {
+          status: "rejected",
+          rejectedAt: FieldValue.serverTimestamp(),
+        });
+
+        logger.info("Technician offer expired", {requestId, technicianId});
+      });
+    },
+);
+
+// Confirms the job automatically if the customer never confirmed it,
+// so the technician is not blocked from new requests.
+exports.autoConfirmCompletion = onTaskDispatched(
+    {
+      retryConfig: {
+        maxAttempts: 5,
+        minBackoffSeconds: 30,
+      },
+      rateLimits: {
+        maxConcurrentDispatches: 10,
+      },
+    },
+    async (req) => {
+      const {requestId} = req.data;
+      if (!requestId) return;
+
+      const requestRef = db.collection("requests").doc(requestId);
+
+      await db.runTransaction(async (transaction) => {
+        const requestSnapshot = await transaction.get(requestRef);
+
+        if (
+          !requestSnapshot.exists ||
+          requestSnapshot.data().status !== "waiting_customer_confirmation"
+        ) {
+          return;
+        }
+
+        transaction.update(requestRef, {
+          status: "completed",
+          autoConfirmed: true,
+          customerConfirmedAt: FieldValue.serverTimestamp(),
+        });
       });
 
-      logger.info("Technician offer expired", {
-        requestId,
-        technicianId,
-      });
-    });
-  },
+      logger.info("Request auto confirmed", {requestId});
+    },
 );
