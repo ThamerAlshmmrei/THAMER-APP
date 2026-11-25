@@ -39,7 +39,7 @@
 
 كيف يشتغل؟
 1. اختر الخدمة وحدد نوع جهازك ووش يحتاج
-2. حدد مدة العمل وشوف السعر مباشرة: 1.5 ريال للدقيقة
+2. حدد مدة العمل وشوف السعر مباشرة: 1.5 ريال للدقيقة، وادفع بأمان بمدى أو Apple Pay أو STC Pay
 3. نرسل طلبك لأقرب فني، وإذا ما رد خلال دقيقتين ننقله للي بعده
 4. تابع وصول الفني، وكلمه بالاتصال أو واتساب أو المحادثة
 5. أكّد انتهاء الشغل
@@ -48,7 +48,7 @@
 • سعر واضح بالدقيقة، بدون مفاجآت
 • أقرب فني لك جغرافياً
 • فنيين معتمدين بعد التحقق من هويتهم
-• إلغاء مجاني قبل قبول الفني
+• دفع إلكتروني آمن، واسترجاع كامل إذا ألغيت قبل قبول الفني
 • إشعارات فورية بحالة طلبك
 
 أنت فني؟ سجّل من التطبيق كفني واستقبل طلبات قريبة منك.
@@ -88,6 +88,8 @@ Are you a technician? Join from the app and receive nearby requests.
 | الموقع الدقيق | نعم | نعم (مع الطرف الآخر في الطلب) | وظائف التطبيق | نعم |
 | الصور | نعم (صورة الفني) | نعم (تظهر للعميل) | وظائف التطبيق | اختياري |
 | رسائل داخل التطبيق | نعم | لا | وظائف التطبيق | اختياري |
+| سجل المشتريات (Purchase history) | نعم | نعم (بوابة الدفع ميسّر) | وظائف التطبيق | نعم |
+| معلومات مالية أخرى (آيبان الفني) | نعم | لا | وظائف التطبيق | للفني فقط |
 | معرّفات أخرى (رقم الهوية/الإقامة) | نعم (للفنيين) | لا | منع الاحتيال والأمان | نعم للفني |
 | معرّفات الجهاز (رمز الإشعارات) | نعم | لا | وظائف التطبيق | نعم |
 
@@ -102,6 +104,7 @@ Are you a technician? Join from the app and receive nearby requests.
 - **Contact Info**: Name، Phone Number، Email Address (Optional) ← App Functionality
 - **Location**: Precise Location ← App Functionality
 - **User Content**: Photos (Technicians)، Other User Content (Chat, request details) ← App Functionality
+- **Financial Info**: Payment Info (IBAN for technicians), Purchases ← App Functionality. بيانات البطاقة تُعالج لدى ميسّر ولا تُحفظ عندنا.
 - **Identifiers**: User ID، Device ID (push token) ← App Functionality
 - **Sensitive Info**: National ID / Iqama (Technicians) ← App Functionality
 
@@ -120,6 +123,9 @@ Authentication ← Sign-in method ← Phone ← **Phone numbers for testing**:
 
 وفعّل حالة "متاح" للفني التجريبي وموقعه قريب من موقع الاختبار.
 
+> 💡 سجّل فيديو قصير للدورة كاملة (طلب ← دفع ← قبول الفني ← إنهاء) وأرفقه مع ملاحظات المراجعة،
+> لأن المراجع ما يقدر يدفع مبلغ حقيقي.
+
 ### النص اللي تلصقه في خانة Notes
 
 ```
@@ -135,8 +141,10 @@ Sign in as the technician on a second device to accept it.
 Location is used only while the app is in use: to find the nearest technician
 and to show the technician's arrival to the customer.
 
-Payment is made in cash directly to the technician for a physical, real-world service
-performed at the customer's home (App Store Guideline 3.1.3(e)); no digital content is sold.
+Payments are for physical, real-world services performed at the customer's home
+(App Store Guideline 3.1.3(e)), processed by the licensed Saudi gateway Moyasar
+(card / Apple Pay / STC Pay). No digital content is sold. Completing a real payment is not needed to review
+the app; a screen recording of the full paid flow is attached.
 
 Account deletion: Account (person icon) → Delete account.
 ```

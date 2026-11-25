@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'core/pricing.dart';
 import 'core/service_catalog.dart';
-import 'customer_request_tracking_page.dart';
+import 'payment_page.dart';
 import 'services/firestore_services.dart';
 import 'services/location_service.dart';
 
@@ -88,12 +88,14 @@ class _ServiceRequestPageState extends State<ServiceRequestPage> {
 
       if (!mounted) return;
 
-      _showMessage('تم إرسال طلبك بنجاح، نبحث لك عن أقرب فني');
-
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => CustomerRequestTrackingPage(requestId: requestId),
+          builder: (_) => PaymentPage(
+            requestId: requestId,
+            totalPrice: totalPrice,
+            serviceName: service.jobName,
+          ),
         ),
       );
     } catch (e) {
@@ -281,7 +283,7 @@ class _ServiceRequestPageState extends State<ServiceRequestPage> {
                           ),
                         )
                       : const Text(
-                          'إرسال الطلب',
+                          'متابعة للدفع',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,

@@ -31,5 +31,8 @@ class Pricing {
     double materialsCost = 0.0,
   }) => laborCost + appFee + materialsCost;
 
+  /// المبلغ بالهللة كما تطلبه بوابة الدفع (1 ريال = 100 هللة).
+  static int toHalalas(num riyals) => (riyals * 100).round();
+
   static String format(num value) => '${value.toStringAsFixed(2)} ريال';
 }

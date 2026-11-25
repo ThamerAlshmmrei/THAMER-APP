@@ -125,7 +125,10 @@ service cloud.firestore {
         ).data.role == 'customer'
         && request.resource.data.customerId == request.auth.uid
         && request.resource.data.technicianId == null
-        && request.resource.data.status == 'searching'
+        // الطلب يبدأ بانتظار الدفع، والـ Function يحوله لـ searching بعد
+        // التحقق من الدفعة عند ميسّر. العميل لا يقدر يغير حالة الدفع.
+        && request.resource.data.status == 'awaiting_payment'
+        && request.resource.data.paymentStatus == 'unpaid'
         && request.resource.data.createdAt == request.time
         && request.resource.data.serviceType in serviceTypes()
         && request.resource.data.durationMinutes is int
@@ -169,14 +172,16 @@ service cloud.firestore {
           'materialsCost',
           'totalPrice',
           'status',
+          'paymentStatus',
           'createdAt'
         ]);
 
-      // العميل يرى طلباته والفني يرى الطلبات المسندة إليه
+      // العميل يرى طلباته والفني يرى الطلبات المسندة إليه، والأدمن يرى الكل
       allow read: if request.auth != null
         && (
           resource.data.customerId == request.auth.uid
           || resource.data.technicianId == request.auth.uid
+          || isAdmin()
         );
 
       // تحديث حالة الطلب
@@ -257,6 +262,7 @@ service cloud.firestore {
           (
             resource.data.customerId == request.auth.uid
             && resource.data.status in [
+              'awaiting_payment',
               'searching',
               'offered',
               'rejected',
@@ -447,8 +453,22 @@ service cloud.firestore {
             'latitude',
             'longitude',
             'locationUpdatedAt',
-            'available'
+            'available',
+            'iban',
+            'ibanHolderName'
           ])
+        // الآيبان السعودي: SA + 22 رقم
+        && (
+          !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['iban', 'ibanHolderName'])
+          || (
+            request.resource.data.iban is string
+            && request.resource.data.iban.matches('^SA[0-9]{22}$')
+            && request.resource.data.ibanHolderName is string
+            && request.resource.data.ibanHolderName.size() >= 3
+            && request.resource.data.ibanHolderName.size() <= 80
+          )
+        )
         && (
           !request.resource.data.diff(resource.data)
             .affectedKeys().hasAny(['available'])
@@ -463,6 +483,26 @@ service cloud.firestore {
         );
 
       allow delete: if false;
+    }
+  
+    // أرباح الفنيين من الطلبات المدفوعة (تكتبها Cloud Functions فقط)
+    match /technicianEarnings/{earningId} {
+      allow read: if request.auth != null
+        && (
+          resource.data.technicianId == request.auth.uid
+          || isAdmin()
+        );
+      allow write: if false;
+    }
+
+    // سجل التحويلات للفنيين (تكتبها Cloud Functions فقط)
+    match /payouts/{payoutId} {
+      allow read: if request.auth != null
+        && (
+          resource.data.technicianId == request.auth.uid
+          || isAdmin()
+        );
+      allow write: if false;
     }
   }
 }

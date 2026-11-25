@@ -5,6 +5,7 @@ class RequestStatus {
   RequestStatus._();
 
   static const List<String> active = [
+    'awaiting_payment',
     'searching',
     'offered',
     'rejected',
@@ -14,6 +15,7 @@ class RequestStatus {
 
   /// الحالات التي يقدر العميل يلغي فيها الطلب.
   static const List<String> cancellable = [
+    'awaiting_payment',
     'searching',
     'offered',
     'rejected',
@@ -24,6 +26,8 @@ class RequestStatus {
 
   static String customerText(Object? status) {
     switch (status) {
+      case 'awaiting_payment':
+        return 'بانتظار إتمام الدفع';
       case 'searching':
         return 'نبحث عن فني قريب منك';
       case 'offered':
@@ -47,6 +51,8 @@ class RequestStatus {
 
   static String shortText(Object? status) {
     switch (status) {
+      case 'awaiting_payment':
+        return 'بانتظار الدفع';
       case 'searching':
       case 'rejected':
         return 'جاري البحث';
@@ -75,9 +81,25 @@ class RequestStatus {
       case 'no_technician_available':
         return Colors.redAccent;
       case 'waiting_customer_confirmation':
+      case 'awaiting_payment':
         return Colors.orangeAccent;
       default:
         return const Color(0xFF20E0C0);
+    }
+  }
+
+  static String paymentText(Object? paymentStatus) {
+    switch (paymentStatus) {
+      case 'paid':
+        return 'مدفوع';
+      case 'refunded':
+        return 'تم استرجاع المبلغ';
+      case 'refund_failed':
+        return 'جاري استرجاع المبلغ';
+      case 'unpaid':
+        return 'غير مدفوع';
+      default:
+        return '-';
     }
   }
 }

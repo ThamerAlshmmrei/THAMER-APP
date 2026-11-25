@@ -61,7 +61,8 @@ function newRequest(minutes, extra = {}) {
     appFee: p.appFee,
     materialsCost: 0.0,
     totalPrice: p.totalPrice,
-    status: "searching",
+    status: "awaiting_payment",
+    paymentStatus: "unpaid",
     createdAt: serverTimestamp(),
     ...extra,
   };
@@ -210,4 +211,66 @@ test("admin can approve an AC technician", async () => {
 test("customer reads own request", async () => {
   await seedRequest("searching");
   await assertSucceeds(getDoc(doc(customerDb(), "requests/r1")));
+});
+
+test("customer cannot skip payment or fake it", async () => {
+  await assertFails(setDoc(doc(customerDb(), "requests/r1"),
+      newRequest(30, {status: "searching"})));
+  await assertFails(setDoc(doc(customerDb(), "requests/r1"),
+      newRequest(30, {paymentStatus: "paid"})));
+  await assertFails(setDoc(doc(customerDb(), "requests/r1"),
+      newRequest(30, {paymentId: "pay_fake"})));
+
+  await seedRequest("awaiting_payment");
+  await assertFails(updateDoc(doc(customerDb(), "requests/r1"),
+      {status: "searching", paymentStatus: "paid"}));
+  await assertFails(updateDoc(doc(customerDb(), "requests/r1"),
+      {paymentStatus: "paid"}));
+});
+
+test("customer can cancel an unpaid request", async () => {
+  await seedRequest("awaiting_payment");
+  await assertSucceeds(updateDoc(doc(customerDb(), "requests/r1"),
+      {status: "cancelled", cancelledAt: serverTimestamp()}));
+});
+
+test("earnings are readable only by their technician and admin", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "technicianEarnings/e1"),
+        {technicianId: "tech", amount: 45, status: "pending"});
+  });
+  const techDb = env.authenticatedContext("tech").firestore();
+  const adminDb = env.authenticatedContext("admin").firestore();
+  await assertSucceeds(getDoc(doc(techDb, "technicianEarnings/e1")));
+  await assertSucceeds(getDoc(doc(adminDb, "technicianEarnings/e1")));
+  await assertFails(getDoc(doc(customerDb(), "technicianEarnings/e1")));
+  await assertFails(updateDoc(doc(techDb, "technicianEarnings/e1"),
+      {amount: 9999}));
+  await assertFails(setDoc(doc(techDb, "technicianEarnings/e2"),
+      {technicianId: "tech", amount: 9999, status: "pending"}));
+});
+
+test("technician can save a valid Saudi IBAN only", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "technicians/tech"), {
+      uid: "tech", available: false, serviceType: "ac",
+      latitude: null, longitude: null, locationUpdatedAt: null,
+    });
+  });
+  const techDb = env.authenticatedContext("tech").firestore();
+  await assertSucceeds(updateDoc(doc(techDb, "technicians/tech"), {
+    iban: "SA0380000000608010167519", ibanHolderName: "أحمد علي",
+  }));
+  await assertFails(updateDoc(doc(techDb, "technicians/tech"), {
+    iban: "GB0380000000608010167519", ibanHolderName: "أحمد علي",
+  }));
+  await assertFails(updateDoc(doc(customerDb(), "technicians/tech"), {
+    iban: "SA0380000000608010167519", ibanHolderName: "مخترق",
+  }));
+});
+
+test("admin can read requests for payment issues", async () => {
+  await seedRequest("cancelled");
+  const adminDb = env.authenticatedContext("admin").firestore();
+  await assertSucceeds(getDoc(doc(adminDb, "requests/r1")));
 });

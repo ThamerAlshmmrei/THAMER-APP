@@ -36,11 +36,46 @@
 
 ## حالات الطلب
 
-`searching` ← `offered` ← (`accepted` أو `rejected` ← فني آخر) ← `waiting_customer_confirmation` ← `completed`
+`awaiting_payment` ← (دفع مؤكد من السيرفر) ← `searching` ← `offered` ← (`accepted` أو `rejected` ← فني آخر) ← `waiting_customer_confirmation` ← `completed`
 
-- العميل يقدر **يلغي** الطلب قبل قبول الفني (`cancelled`).
+- العميل يقدر **يلغي** الطلب قبل قبول الفني (`cancelled`)، **ويرجع له المبلغ تلقائياً**.
 - إذا ما فيه فني متاح (`no_technician_available`) يقدر العميل **يعيد البحث**.
 - إذا أنهى الفني العمل وما أكّد العميل، يُعتمد الطلب تلقائياً بعد **3 ساعات**، عشان ما يتعطل الفني عن طلبات جديدة.
+
+## الدفع (ميسّر)
+
+1. العميل يدفع داخل التطبيق عند الطلب (مدى، فيزا، ماستركارد، STC Pay، و Apple Pay).
+2. الـ Function `confirmPayment` يجلب الدفعة من ميسّر **بالمفتاح السري** ويتحقق من: الحالة `paid`، والمبلغ، والعملة، وأن الدفعة تخص نفس الطلب. بعدها فقط يبدأ البحث عن فني.
+3. `moyasarWebhook` نسخة احتياطية: لو انقطع التطبيق بعد الدفع، ميسّر يبلغ السيرفر مباشرة.
+4. الإلغاء قبل قبول الفني ← استرجاع كامل تلقائي. لو فشل الاسترجاع يظهر للأدمن في صفحة **المدفوعات** ليسترجعه يدوياً من لوحة ميسّر، وبعدها يغيّر `paymentStatus` للطلب إلى `refunded` من Firestore Console.
+5. عند اكتمال الطلب تُسجّل **أجرة الفني** في محفظته (`technicianEarnings`). الأدمن يحوّل له من البنك ويضغط **تم التحويل**.
+
+### تفعيل ميسّر
+
+1. سجّل في [ميسّر](https://moyasar.com) وخذ المفاتيح من لوحة التحكم (Settings ← API Keys).
+2. **المفتاح العام** (`pk_test_...` للتجربة، `pk_live_...` للتشغيل): يُمرَّر وقت البناء:
+
+```bash
+flutter build appbundle --dart-define=MOYASAR_PUBLISHABLE_KEY=pk_live_xxx
+flutter build ipa --dart-define=MOYASAR_PUBLISHABLE_KEY=pk_live_xxx
+```
+
+3. **المفتاح السري** (`sk_...`): لا يوضع في الكود أبداً:
+
+```bash
+firebase functions:secrets:set MOYASAR_SECRET_KEY        # الصق sk_live_xxx
+firebase functions:secrets:set MOYASAR_WEBHOOK_SECRET    # اختر كلمة سر طويلة
+```
+
+4. في لوحة ميسّر ← Webhooks: أضف الرابط
+   `https://me-central2-thamer-e0fdd.cloudfunctions.net/moyasarWebhook`
+   مع نفس كلمة السر (Secret token) وحدث `payment_paid`.
+5. **Apple Pay (اختياري)**:
+   - سجّل Merchant ID في حساب Apple Developer (مثل `merchant.com.thamer.thamer`).
+   - اربطه بميسّر حسب دليلهم.
+   - فعّل Apple Pay من Xcode ← Signing & Capabilities.
+   - ابنِ التطبيق بـ `--dart-define=APPLE_PAY_MERCHANT_ID=merchant.com.thamer.thamer`.
+6. للتجربة: بطاقات ميسّر التجريبية مع مفاتيح `test`.
 
 ---
 
@@ -65,6 +100,7 @@ flutter run --dart-define=USE_FIREBASE_EMULATOR=true --dart-define=FIREBASE_EMUL
 flutter test                         # اختبارات التطبيق (التسعير والخدمات)
 cd rules-tests && npm install && npm test   # اختبارات قواعد Firestore (تحتاج Java)
 cd functions && npm install && npm run lint
+cd rules-tests && npm run test:payments      # اختبار الدفع كامل مع ميسّر وهمي
 ```
 
 ---
@@ -140,7 +176,6 @@ dart run flutter_native_splash:create
 
 ## ملاحظات
 
-- **الدفع**: السعر يُحسب ويُعرض، والدفع حالياً **نقداً للفني**. ربط بوابة دفع (Moyasar / Tap / Apple Pay) يحتاج حساب تاجر.
 - **حذف الحساب**: من "حسابي ← حذف الحساب" (مطلوب من Apple و Google). ينفذه الـ Function `deleteAccount`: يحذف بيانات المستخدم وتسجيل دخوله ورسائله، ويزيل اسمه ورقمه من الطلبات السابقة، ويرفض الحذف إذا عنده طلب جاري.
 - **صور الفنيين**: رفعها مفعّل. لإيقافه مؤقتاً ابنِ بـ `--dart-define=ENABLE_STORAGE=false`.
 - لإضافة خدمة جديدة: أضفها في `lib/core/service_catalog.dart`، وفي `serviceTypes()` داخل `firestore.rules`، وفي `SERVICE_NAMES` داخل `functions/index.js`.

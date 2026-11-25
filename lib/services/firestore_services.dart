@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/app_config.dart';
 import '../core/pricing.dart';
 
 class FirestoreService {
@@ -44,11 +45,23 @@ class FirestoreService {
         appFee: appFee,
         materialsCost: materialsCost,
       ),
-      'status': 'searching',
+      'status': 'awaiting_payment',
+      'paymentStatus': 'unpaid',
       'createdAt': FieldValue.serverTimestamp(),
     });
 
     return requestRef.id;
+  }
+
+  /// يطلب من السيرفر التحقق من الدفعة عند ميسّر وبدء البحث عن فني.
+  Future<void> confirmPayment({
+    required String requestId,
+    required String paymentId,
+  }) async {
+    await appFunctions.httpsCallable('confirmPayment').call<void>({
+      'requestId': requestId,
+      'paymentId': paymentId,
+    });
   }
 
   // إلغاء الطلب من العميل قبل قبول الفني

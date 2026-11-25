@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_first_app/core/pricing.dart';
 import 'package:my_first_app/core/request_status.dart';
 import 'package:my_first_app/core/service_catalog.dart';
+import 'package:my_first_app/technician_wallet_page.dart';
 
 void main() {
   group('Pricing', () {
@@ -77,6 +78,43 @@ void main() {
     test('accepted requests cannot be cancelled by the customer', () {
       expect(RequestStatus.cancellable, isNot(contains('accepted')));
       expect(RequestStatus.cancellable, contains('searching'));
+    });
+  });
+
+  group('Payment', () {
+    test('amount is sent to Moyasar in halalas', () {
+      expect(Pricing.toHalalas(20.0), 2000);
+      expect(Pricing.toHalalas(51.75), 5175);
+      expect(Pricing.toHalalas(103.5), 10350);
+    });
+
+    test('halalas are exact for every possible total', () {
+      for (var m = Pricing.minMinutes; m <= Pricing.maxMinutes; m++) {
+        final labor = Pricing.laborCost(m);
+        final total = Pricing.total(
+          laborCost: labor,
+          appFee: Pricing.appFee(labor),
+        );
+        // نفس حساب السيرفر: Math.round(totalPrice * 100)
+        expect(Pricing.toHalalas(total), (total * 100).round());
+        expect(Pricing.toHalalas(total) / 100, closeTo(total, 0.001));
+      }
+    });
+
+    test('Saudi IBAN validation', () {
+      expect(isValidSaudiIban('SA0380000000608010167519'), isTrue);
+      expect(isValidSaudiIban('SA0380000000608010167518'), isFalse);
+      expect(isValidSaudiIban('SA03800000006080101675'), isFalse);
+      expect(isValidSaudiIban('AE070331234567890123456'), isFalse);
+      expect(
+        normalizeIban('sa03 8000 0000 6080 1016 7519'),
+        'SA0380000000608010167519',
+      );
+    });
+
+    test('awaiting payment can be cancelled', () {
+      expect(RequestStatus.cancellable, contains('awaiting_payment'));
+      expect(RequestStatus.isActive('awaiting_payment'), isTrue);
     });
   });
 }

@@ -3,7 +3,8 @@
   "private": true,
   "description": "Firestore security rules tests (run with: npm test)",
   "scripts": {
-    "test": "firebase emulators:exec --config ../firebase.json --only firestore --project demo-thamer \"node --test\""
+    "test": "firebase emulators:exec --config ../firebase.json --only firestore --project demo-thamer \"node --test\"",
+    "test:payments": "printf 'MOYASAR_API_URL=http://127.0.0.1:7777\\n' > ../functions/.env.local && printf 'MOYASAR_SECRET_KEY=sk_test_fake\\nMOYASAR_WEBHOOK_SECRET=whsec_test\\n' > ../functions/.secret.local && firebase emulators:exec --config ../firebase.json --only auth,firestore,functions --project demo-thamer \"node payments-e2e.js\"; status=$?; rm -f ../functions/.env.local ../functions/.secret.local; exit $status"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",

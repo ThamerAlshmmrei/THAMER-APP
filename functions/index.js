@@ -4,7 +4,11 @@ const {
   onDocumentUpdated,
 } = require("firebase-functions/v2/firestore");
 const {onTaskDispatched} = require("firebase-functions/v2/tasks");
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {
+  onCall,
+  onRequest,
+  HttpsError,
+} = require("firebase-functions/v2/https");
 const {getFunctions} = require("firebase-admin/functions");
 const {getMessaging} = require("firebase-admin/messaging");
 const {logger} = require("firebase-functions");
@@ -12,6 +16,8 @@ const admin = require("firebase-admin");
 const {FieldValue} = require("firebase-admin/firestore");
 
 admin.initializeApp();
+
+const payments = require("./payments");
 
 const db = admin.firestore();
 
@@ -380,13 +386,25 @@ exports.dispatchNewRequest = onDocumentCreated(
 
 // Reacts to every status change of a request.
 exports.handleRequestUpdate = onDocumentUpdated(
-    "requests/{requestId}",
+    {
+      document: "requests/{requestId}",
+      secrets: [payments.MOYASAR_SECRET_KEY],
+    },
     async (event) => {
       const before = event.data.before.data();
       const after = event.data.after.data();
       const requestRef = event.data.after.ref;
 
       if (before.status === after.status) return;
+
+      // Payment verified: start searching for a technician.
+      if (
+        before.status === "awaiting_payment" &&
+        after.status === "searching"
+      ) {
+        await assignNextTechnician(requestRef, "searching");
+        return;
+      }
 
       // Technician rejects (or offer expired): assign the next technician.
       if (after.status === "rejected") {
@@ -435,6 +453,8 @@ exports.handleRequestUpdate = onDocumentUpdated(
             );
           }
         }
+
+        await payments.refundCancelledRequest(requestRef, after);
 
         logger.info("Request cancelled", {requestId: requestRef.id});
         return;
@@ -543,6 +563,8 @@ exports.handleRequestUpdate = onDocumentUpdated(
           );
         });
 
+        await payments.recordTechnicianEarning(requestRef, after);
+
         logger.info("Request completed", {
           requestId: requestRef.id,
           technicianId: after.technicianId,
@@ -648,6 +670,7 @@ exports.autoConfirmCompletion = onTaskDispatched(
 );
 
 const ACTIVE_STATUSES = [
+  "awaiting_payment",
   "searching",
   "offered",
   "rejected",
@@ -711,6 +734,19 @@ exports.deleteAccount = onCall(async (request) => {
     );
   }
 
+  const pendingEarnings = await db.collection("technicianEarnings")
+      .where("technicianId", "==", uid)
+      .where("status", "==", "pending")
+      .limit(1)
+      .get();
+
+  if (!pendingEarnings.empty) {
+    throw new HttpsError(
+        "failed-precondition",
+        "لك مستحقات لم تُحوّل بعد. تواصل مع الدعم لتحويلها ثم احذف الحساب.",
+    );
+  }
+
   // إخفاء البيانات الشخصية من الطلبات السابقة.
   await batchWrite(asCustomer.docs, {
     customerName: "",
@@ -753,4 +789,176 @@ exports.deleteAccount = onCall(async (request) => {
   logger.info("Account deleted", {uid});
 
   return {deleted: true};
+});
+
+// يستدعيه التطبيق بعد نجاح الدفع: يتحقق من الدفعة عند ميسّر ثم يبدأ البحث.
+exports.confirmPayment = onCall(
+    {secrets: [payments.MOYASAR_SECRET_KEY]},
+    async (request) => {
+      const uid = request.auth && request.auth.uid;
+      const {requestId, paymentId} = request.data || {};
+
+      if (!uid) {
+        throw new HttpsError("unauthenticated", "سجّل الدخول أولاً");
+      }
+
+      if (typeof requestId !== "string" || typeof paymentId !== "string") {
+        throw new HttpsError("invalid-argument", "بيانات الدفع ناقصة");
+      }
+
+      const snapshot = await db.collection("requests").doc(requestId).get();
+
+      if (!snapshot.exists || snapshot.data().customerId !== uid) {
+        throw new HttpsError("not-found", "الطلب غير موجود");
+      }
+
+      let payment;
+      try {
+        payment = await payments.fetchPayment(paymentId);
+      } catch (error) {
+        logger.error("Could not fetch payment", {
+          requestId,
+          paymentId,
+          error: error.message,
+        });
+        throw new HttpsError(
+            "unavailable",
+            "تعذر التحقق من الدفع الآن، بنعيد المحاولة تلقائياً",
+        );
+      }
+
+      const outcome = await payments.applyVerifiedPayment(requestId, payment);
+
+      if (outcome === "paid" || outcome === "already_applied") {
+        return {status: "paid"};
+      }
+
+      if (outcome.startsWith("not_paid")) {
+        throw new HttpsError("failed-precondition", "لم تكتمل عملية الدفع");
+      }
+
+      if (outcome === "duplicate" || outcome === "cancelled") {
+        return {status: outcome};
+      }
+
+      throw new HttpsError("failed-precondition", "تعذر اعتماد الدفعة");
+    },
+);
+
+// Webhook من ميسّر: نسخة احتياطية لو انقطع التطبيق بعد الدفع.
+// الرابط في لوحة ميسّر:
+// https://me-central2-thamer-e0fdd.cloudfunctions.net/moyasarWebhook
+exports.moyasarWebhook = onRequest(
+    {secrets: [payments.MOYASAR_SECRET_KEY, payments.MOYASAR_WEBHOOK_SECRET]},
+    async (req, res) => {
+      if (req.method !== "POST") {
+        res.status(405).send("Method not allowed");
+        return;
+      }
+
+      const event = req.body || {};
+      const expectedSecret = payments.MOYASAR_WEBHOOK_SECRET.value();
+
+      if (!expectedSecret || event.secret_token !== expectedSecret) {
+        logger.warn("Webhook rejected: bad secret token");
+        res.status(401).send("Unauthorized");
+        return;
+      }
+
+      const data = event.data || {};
+      const requestId = data.metadata && data.metadata.request_id;
+
+      if (event.type !== "payment_paid" || !data.id || !requestId) {
+        res.status(200).send("ignored");
+        return;
+      }
+
+      try {
+        // نعيد جلب الدفعة من ميسّر بدل الثقة بمحتوى الطلب.
+        const payment = await payments.fetchPayment(data.id);
+        await payments.applyVerifiedPayment(requestId, payment);
+        res.status(200).send("ok");
+      } catch (error) {
+        logger.error("Webhook processing failed", {error: error.message});
+        res.status(500).send("error");
+      }
+    },
+);
+
+// الأدمن يسجل أنه حوّل مستحقات فني (تحويل بنكي خارج التطبيق).
+exports.recordPayout = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "سجّل الدخول أولاً");
+  }
+
+  const adminSnapshot = await db.collection("users").doc(uid).get();
+
+  if (!adminSnapshot.exists || adminSnapshot.data().role !== "admin") {
+    throw new HttpsError("permission-denied", "للأدمن فقط");
+  }
+
+  const {technicianId, reference} = request.data || {};
+
+  if (typeof technicianId !== "string" || technicianId.length === 0) {
+    throw new HttpsError("invalid-argument", "الفني غير محدد");
+  }
+
+  const pending = await db.collection("technicianEarnings")
+      .where("technicianId", "==", technicianId)
+      .where("status", "==", "pending")
+      .get();
+
+  if (pending.empty) {
+    throw new HttpsError("failed-precondition", "لا توجد مستحقات معلقة");
+  }
+
+  const total = pending.docs.reduce(
+      (sum, doc) => sum + Number(doc.data().amount || 0),
+      0,
+  );
+
+  const payoutRef = db.collection("payouts").doc();
+  const technicianSnapshot = await db.collection("technicians")
+      .doc(technicianId)
+      .get();
+  const technician = technicianSnapshot.exists ?
+    technicianSnapshot.data() :
+    {};
+
+  const docs = pending.docs;
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = db.batch();
+    for (const doc of docs.slice(i, i + 400)) {
+      batch.update(doc.ref, {
+        status: "paid_out",
+        payoutId: payoutRef.id,
+        paidOutAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (i === 0) {
+      batch.set(payoutRef, {
+        technicianId,
+        amount: Math.round(total * 100) / 100,
+        count: docs.length,
+        iban: technician.iban || null,
+        reference: typeof reference === "string" ?
+          reference.slice(0, 100) :
+          "",
+        createdBy: uid,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  await notifyUser(
+      technicianId,
+      "تم تحويل مستحقاتك",
+      `تم تحويل ${total.toFixed(2)} ريال إلى حسابك البنكي`,
+      {type: "payout"},
+  );
+
+  return {amount: total, count: docs.length};
 });

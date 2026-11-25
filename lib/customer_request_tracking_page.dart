@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'chat_page.dart';
+import 'payment_page.dart';
 import 'core/pricing.dart';
 import 'core/request_status.dart';
 import 'core/service_catalog.dart';
@@ -102,6 +103,33 @@ class CustomerRequestTrackingPage extends StatelessWidget {
                     successMessage: 'تم تأكيد اكتمال الخدمة، شكراً لك',
                     action: () =>
                         FirestoreService().confirmCompletion(requestId),
+                  ),
+                ],
+                if (status == 'awaiting_payment') ...[
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      final total = data['totalPrice'];
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PaymentPage(
+                            requestId: requestId,
+                            totalPrice: total is num ? total.toDouble() : 0,
+                            serviceName: ServiceCatalog.jobNameOf(
+                              data['serviceType'],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.payment),
+                    label: const Text('إكمال الدفع'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.all(15),
+                    ),
                   ),
                 ],
                 if (status == 'no_technician_available') ...[
@@ -224,6 +252,10 @@ class CustomerRequestTrackingPage extends StatelessWidget {
               (data['materialsCost'] ?? 0) > 0)
             _infoRow('المواد', _money(data['materialsCost'])),
           _infoRow('الإجمالي', _money(data['totalPrice'])),
+          _infoRow(
+            'حالة الدفع',
+            RequestStatus.paymentText(data['paymentStatus']),
+          ),
         ],
       ),
     );
@@ -294,7 +326,10 @@ class CustomerRequestTrackingPage extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('إلغاء الطلب'),
-        content: const Text('متأكد تبي تلغي الطلب؟'),
+        content: const Text(
+          'متأكد تبي تلغي الطلب؟\n'
+          'إذا كنت دفعت، يرجع لك المبلغ كامل لنفس وسيلة الدفع.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),

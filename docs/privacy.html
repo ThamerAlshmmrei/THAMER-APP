@@ -26,6 +26,7 @@
   </ul>
   <p><strong>من العملاء:</strong></p>
   <ul>
+    <li>بيانات الدفع: رقم العملية والمبلغ وحالته ووسيلة الدفع. <strong>بيانات البطاقة لا تمر علينا ولا نحفظها</strong>، تُدخل مباشرة لدى بوابة الدفع «ميسّر».</li>
     <li>موقعك الجغرافي <strong>لحظة إرسال الطلب فقط</strong>، لإيجاد أقرب فني وتوجيهه إليك.</li>
     <li>تفاصيل الطلب: نوع الخدمة، نوع الجهاز، المشكلة، الوصف، المدة والسعر.</li>
   </ul>
@@ -33,6 +34,7 @@
   <ul>
     <li>رقم الهوية الوطنية أو الإقامة، للتحقق من هوية الفني قبل اعتماده.</li>
     <li>الصورة الشخصية (اختيارية) والتخصص.</li>
+    <li>رقم الحساب البنكي (الآيبان) واسم صاحبه، لتحويل مستحقاتك. لا يطّلع عليه غيرك وغير إدارة التطبيق.</li>
     <li>الموقع الجغرافي عند تفعيل حالة «متاح»، وأثناء تنفيذ طلب مقبول فقط، ليعرف العميل مكان وصول الفني. <strong>لا نتتبع موقعك والتطبيق مغلق.</strong></li>
   </ul>
 
@@ -49,6 +51,7 @@
   <h2>3. مع من نشارك بياناتك</h2>
   <ul>
     <li><strong>بين العميل والفني:</strong> بعد قبول الفني للطلب فقط، يظهر للفني اسم العميل ورقمه وموقع الطلب، ويظهر للعميل اسم الفني ورقمه وصورته وموقعه أثناء التنفيذ. قبل القبول يرى الفني تفاصيل الخدمة والمسافة دون بيانات التواصل.</li>
+    <li><strong>بوابة الدفع «ميسّر»:</strong> لمعالجة عمليات الدفع والاسترجاع.</li>
     <li><strong>مزودو الخدمات التقنية:</strong> نستخدم خدمات Google Firebase (قواعد البيانات، تسجيل الدخول، التخزين، الإشعارات، الحماية من إساءة الاستخدام) لتشغيل التطبيق.</li>
     <li><strong>الجهات الرسمية:</strong> عند وجود طلب نظامي ملزم.</li>
   </ul>
@@ -84,13 +87,13 @@
   <h2>Data we collect</h2>
   <ul>
     <li><strong>All users:</strong> first and last name, mobile number (sign-in and SMS verification), optional email, device push token, and chat messages within a request.</li>
-    <li><strong>Customers:</strong> location <strong>at the moment a request is sent</strong>, and request details (service, device type, issue, description, duration, price).</li>
-    <li><strong>Technicians:</strong> national ID / Iqama number (identity verification), optional profile photo, specialization, and location while marked “available” or while serving an accepted request. We do not track location while the app is closed.</li>
+    <li><strong>Customers:</strong> payment records (transaction ID, amount, status, method). Card details are entered directly with our payment gateway Moyasar and are never stored by us. Location <strong>at the moment a request is sent</strong>, and request details (service, device type, issue, description, duration, price).</li>
+    <li><strong>Technicians:</strong> national ID / Iqama number (identity verification), optional profile photo, specialization, bank IBAN and account holder name for payouts, and location while marked “available” or while serving an accepted request. We do not track location while the app is closed.</li>
   </ul>
   <h2>How we use it</h2>
   <p>To create your account, match a request with the nearest available technician, show prices, send request-related notifications (no advertising), prevent fraud, and meet legal obligations.</p>
   <h2>Sharing</h2>
-  <p>Only after a technician accepts a request, the customer’s name, number and request location become visible to that technician, and the technician’s name, number, photo and live location become visible to the customer. We use Google Firebase services to run the app. We share data with authorities only when legally required. <strong>We do not sell personal data.</strong></p>
+  <p>Only after a technician accepts a request, the customer’s name, number and request location become visible to that technician, and the technician’s name, number, photo and live location become visible to the customer. Payments are processed by Moyasar. We use Google Firebase services to run the app. We share data with authorities only when legally required. <strong>We do not sell personal data.</strong></p>
   <h2>Retention and deletion</h2>
   <p>You can delete your account at any time in the app (<strong>Account → Delete account</strong>) or via the <a href="delete-account.html#en">account deletion page</a>. Your profile, ID number, photo, push token and messages are deleted immediately. Past request records are kept for accounting and legal purposes with your name, number and location removed.</p>
   <h2>Your rights</h2>

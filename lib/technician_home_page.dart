@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'account_page.dart';
 import 'chat_page.dart';
+import 'technician_wallet_page.dart';
 import 'core/pricing.dart';
 import 'core/service_catalog.dart';
 
@@ -250,6 +251,16 @@ class _TechnicianHomePageState extends State<TechnicianHomePage> {
         foregroundColor: Colors.white,
         title: const Text('لوحة الفني'),
         actions: [
+          IconButton(
+            tooltip: 'محفظتي',
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TechnicianWalletPage()),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'حسابي',
             icon: const Icon(Icons.person_outline),
