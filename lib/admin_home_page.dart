@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'account_page.dart';
 import 'core/service_catalog.dart';
 import 'services/notification_service.dart';
 
@@ -116,6 +117,16 @@ class _AdminHomePageState extends State<AdminHomePage> {
         foregroundColor: Colors.white,
         title: const Text('THAMER Admin'),
         actions: [
+          IconButton(
+            tooltip: 'حسابي',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AccountPage()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {

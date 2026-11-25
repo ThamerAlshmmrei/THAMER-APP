@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'account_page.dart';
 import 'admin_home_page.dart';
 import 'core/service_catalog.dart';
 import 'home_page.dart';
@@ -184,6 +185,14 @@ class TechnicianApplicationStatusPage extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kPrimaryColor,
                   side: const BorderSide(color: kPrimaryColor),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => confirmAndDeleteAccount(context),
+                child: const Text(
+                  'حذف حسابي وطلب الانضمام',
+                  style: TextStyle(color: Colors.redAccent),
                 ),
               ),
             ],

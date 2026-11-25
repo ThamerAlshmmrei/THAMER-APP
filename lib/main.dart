@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'auth_gate.dart';
+import 'core/app_config.dart';
 import 'customer_register_page.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
@@ -31,9 +32,29 @@ Future<void> main() async {
 
   if (useFirebaseEmulator) {
     await _connectToEmulators();
+  } else {
+    await _activateAppCheck();
   }
 
   runApp(const MyApp());
+}
+
+/// App Check يتأكد أن الطلبات جاية من تطبيقك الأصلي فقط، ويحمي من
+/// إرسال رسائل SMS وهمية على حسابك. في وضع التطوير يُستخدم مزود
+/// التصحيح (Debug) ويُطبع رمزه في السجل لتضيفه في Firebase Console.
+Future<void> _activateAppCheck() async {
+  try {
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kReleaseMode
+          ? const AndroidPlayIntegrityProvider()
+          : const AndroidDebugProvider(),
+      providerApple: kReleaseMode
+          ? const AppleDeviceCheckProvider()
+          : const AppleDebugProvider(),
+    );
+  } catch (e) {
+    debugPrint('App Check activation failed: $e');
+  }
 }
 
 Future<void> _connectToEmulators() async {
@@ -43,7 +64,7 @@ Future<void> _connectToEmulators() async {
 
   await FirebaseAuth.instance.useAuthEmulator(host, 9099);
   FirebaseFirestore.instance.useFirestoreEmulator(host, 8081);
-  FirebaseFunctions.instance.useFunctionsEmulator(host, 5000);
+  appFunctions.useFunctionsEmulator(host, 5000);
   await FirebaseStorage.instance.useStorageEmulator(host, 9199);
 }
 

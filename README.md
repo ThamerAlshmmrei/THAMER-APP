@@ -16,6 +16,9 @@
 | `firestore.indexes.json` | فهارس Firestore |
 | `storage.rules` | قواعد رفع صور الفنيين |
 | `rules-tests/` | اختبارات قواعد الحماية |
+| `docs/` | صفحات الخصوصية والشروط وحذف الحساب (تُنشر على Firebase Hosting) |
+| `store/` | نصوص المتجر وإجابات نماذج الخصوصية وصورة Google Play |
+| `assets/branding/` | الأيقونة وشعار شاشة البداية |
 
 ## التسعير
 
@@ -75,14 +78,23 @@ cd functions && npm install && npm run lint
 3. **Storage**: أنشئ الـ bucket (لصور الفنيين).
 4. **Cloud Messaging ← Apple app configuration**: ارفع **APNs Authentication Key (.p8)** من حساب Apple Developer. بدونه ما توصل الإشعارات لأجهزة iPhone.
 5. في Google Cloud لنفس المشروع: فعّل **Cloud Tasks API**.
-6. انشر كل شيء:
+6. **حماية الرسائل (مهم مالياً)**:
+   - Authentication ← Settings ← **SMS region policy**: اسمح بالسعودية فقط (`SA`).
+   - **App Check**: سجّل تطبيق أندرويد بـ **Play Integrity** (يحتاج بصمة SHA-256)، وتطبيق iOS بـ **DeviceCheck** (يحتاج مفتاح DeviceCheck من حساب Apple).
+   - جرّب التطبيق أسبوع وتأكد من صفحة App Check أن الطلبات "Verified"، ثم فعّل **Enforce** لـ Authentication و Firestore و Storage.
+   - في وضع التطوير يطبع التطبيق "debug token" في السجل. أضفه في App Check ← Manage debug tokens.
+7. **أرقام جوال تجريبية** للمراجعين: Authentication ← Phone ← Phone numbers for testing (التفاصيل في `store/STORE_LISTING.md`).
+8. **بريد الدعم**: اكتبه في `lib/core/app_config.dart` (`supportEmail`)، واستبدل `SUPPORT_EMAIL` في ملفات `docs/*.html`.
+9. انشر كل شيء:
 
 ```bash
 cd functions && npm install && cd ..
-firebase deploy --only firestore,storage,functions
+firebase deploy --only firestore,storage,functions,hosting
 ```
 
-7. **أول حساب أدمن**: سجّل كعميل من التطبيق، ثم من Firestore Console غيّر حقل `role` في `users/{uid}` إلى `admin`.
+   بعدها تشتغل صفحات الخصوصية على `https://thamer-e0fdd.web.app/privacy.html`.
+
+10. **أول حساب أدمن**: سجّل كعميل من التطبيق، ثم من Firestore Console غيّر حقل `role` في `users/{uid}` إلى `admin`.
 
 ### 2) أندرويد
 
@@ -117,8 +129,18 @@ storeFile=/المسار/thamer-upload.jks
 
 ---
 
+## الأيقونة وشاشة البداية
+
+الملفات في `assets/branding/`. لتغيير الشعار استبدل الصور ثم شغّل:
+
+```bash
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
+```
+
 ## ملاحظات
 
 - **الدفع**: السعر يُحسب ويُعرض، والدفع حالياً **نقداً للفني**. ربط بوابة دفع (Moyasar / Tap / Apple Pay) يحتاج حساب تاجر.
+- **حذف الحساب**: من "حسابي ← حذف الحساب" (مطلوب من Apple و Google). ينفذه الـ Function `deleteAccount`: يحذف بيانات المستخدم وتسجيل دخوله ورسائله، ويزيل اسمه ورقمه من الطلبات السابقة، ويرفض الحذف إذا عنده طلب جاري.
 - **صور الفنيين**: رفعها مفعّل. لإيقافه مؤقتاً ابنِ بـ `--dart-define=ENABLE_STORAGE=false`.
 - لإضافة خدمة جديدة: أضفها في `lib/core/service_catalog.dart`، وفي `serviceTypes()` داخل `firestore.rules`، وفي `SERVICE_NAMES` داخل `functions/index.js`.

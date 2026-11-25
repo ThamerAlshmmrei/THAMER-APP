@@ -1,4 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+
+import 'core/legal_notice.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -488,6 +491,8 @@ class _TechnicianRegisterPageState extends State<TechnicianRegisterPage> {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              const LegalNotice(),
             ],
 
             if (applicationSubmitted) ...[

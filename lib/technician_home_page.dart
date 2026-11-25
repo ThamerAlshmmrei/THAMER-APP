@@ -9,10 +9,10 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'account_page.dart';
 import 'chat_page.dart';
 import 'core/pricing.dart';
 import 'core/service_catalog.dart';
-import 'services/notification_service.dart';
 
 class TechnicianHomePage extends StatefulWidget {
   const TechnicianHomePage({super.key});
@@ -251,11 +251,13 @@ class _TechnicianHomePageState extends State<TechnicianHomePage> {
         title: const Text('لوحة الفني'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              stopLocationTracking();
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              await NotificationService.signOut();
+            tooltip: 'حسابي',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AccountPage()),
+              );
             },
           ),
         ],

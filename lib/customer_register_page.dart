@@ -1,4 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+
+import 'core/legal_notice.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -280,6 +283,9 @@ class _CustomerRegisterPageState extends State<CustomerRegisterPage> {
               const SizedBox(height: 20),
               CircularProgressIndicator(color: primaryColor),
             ],
+
+            const SizedBox(height: 24),
+            const LegalNotice(),
           ],
         ),
       ),

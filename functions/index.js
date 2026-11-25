@@ -4,6 +4,7 @@ const {
   onDocumentUpdated,
 } = require("firebase-functions/v2/firestore");
 const {onTaskDispatched} = require("firebase-functions/v2/tasks");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {getFunctions} = require("firebase-admin/functions");
 const {getMessaging} = require("firebase-admin/messaging");
 const {logger} = require("firebase-functions");
@@ -645,3 +646,111 @@ exports.autoConfirmCompletion = onTaskDispatched(
       logger.info("Request auto confirmed", {requestId});
     },
 );
+
+const ACTIVE_STATUSES = [
+  "searching",
+  "offered",
+  "rejected",
+  "accepted",
+  "waiting_customer_confirmation",
+];
+
+/**
+ * Applies the same update to many documents in batches of 400.
+ * @param {FirebaseFirestore.QueryDocumentSnapshot[]} docs Documents.
+ * @param {?Object} data Update data, or null to delete the documents.
+ * @return {Promise<void>} Resolves when all batches are committed.
+ */
+async function batchWrite(docs, data) {
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = db.batch();
+    for (const doc of docs.slice(i, i + 400)) {
+      if (data === null) {
+        batch.delete(doc.ref);
+      } else {
+        batch.update(doc.ref, data);
+      }
+    }
+    await batch.commit();
+  }
+}
+
+// حذف الحساب نهائياً (مطلوب من Apple و Google Play).
+// يحذف بيانات المستخدم ويُخفي اسمه ورقمه من الطلبات السابقة،
+// ويرفض الحذف إذا كان عنده طلب جاري.
+// بعد تفعيل App Check في Console يمكن إضافة {enforceAppCheck: true}.
+exports.deleteAccount = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "سجّل الدخول أولاً");
+  }
+
+  const [asCustomer, asTechnician, technicianSnapshot] = await Promise.all([
+    db.collection("requests")
+        .where("customerId", "==", uid)
+        .get(),
+    db.collection("requests")
+        .where("technicianId", "==", uid)
+        .get(),
+    db.collection("technicians").doc(uid).get(),
+  ]);
+
+  const hasActive = [...asCustomer.docs, ...asTechnician.docs].some(
+      (doc) => ACTIVE_STATUSES.includes(doc.data().status),
+  );
+
+  if (
+    hasActive ||
+    (technicianSnapshot.exists &&
+      technicianSnapshot.data().currentRequestId)
+  ) {
+    throw new HttpsError(
+        "failed-precondition",
+        "لديك طلب جاري. أنهِ الطلب أو ألغه ثم احذف الحساب.",
+    );
+  }
+
+  // إخفاء البيانات الشخصية من الطلبات السابقة.
+  await batchWrite(asCustomer.docs, {
+    customerName: "",
+    customerPhone: "",
+    customerLatitude: null,
+    customerLongitude: null,
+    problemDescription: "",
+    customerDeleted: true,
+  });
+
+  await batchWrite(asTechnician.docs, {
+    technicianName: "",
+    technicianPhone: "",
+    technicianImageUrl: null,
+    technicianDeleted: true,
+  });
+
+  // حذف رسائل المحادثة التي كتبها المستخدم.
+  const messages = await db.collectionGroup("messages")
+      .where("senderId", "==", uid)
+      .get();
+  await batchWrite(messages.docs, null);
+
+  await Promise.all([
+    db.collection("users").doc(uid).delete(),
+    db.collection("technicians").doc(uid).delete(),
+    db.collection("technicianApplications").doc(uid).delete(),
+  ]);
+
+  try {
+    await admin.storage().bucket().deleteFiles({
+      prefix: `technician_profiles/${uid}/`,
+    });
+  } catch (error) {
+    logger.warn("Could not delete profile images", {uid, error});
+  }
+
+  await admin.auth().deleteUser(uid);
+
+  logger.info("Account deleted", {uid});
+
+  return {deleted: true};
+});

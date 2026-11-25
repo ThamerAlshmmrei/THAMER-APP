@@ -2,12 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'account_page.dart';
 import 'core/request_status.dart';
 import 'core/service_catalog.dart';
 import 'customer_request_tracking_page.dart';
 import 'my_requests_page.dart';
 import 'service_request_page.dart';
-import 'services/notification_service.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -35,11 +35,13 @@ class HomePage extends StatelessWidget {
             },
           ),
           IconButton(
-            tooltip: 'تسجيل الخروج',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              await NotificationService.signOut();
+            tooltip: 'حسابي',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AccountPage()),
+              );
             },
           ),
         ],

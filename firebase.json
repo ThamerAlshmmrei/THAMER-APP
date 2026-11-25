@@ -68,5 +68,13 @@
     "storage": {
       "port": 9199
     }
+  },
+  "hosting": {
+    "public": "docs",
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "cleanUrls": false
   }
 }
